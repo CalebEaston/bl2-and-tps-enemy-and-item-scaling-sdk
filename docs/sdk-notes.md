@@ -218,24 +218,34 @@ Everything else:
 - Save-loaded, bank and memento items go through `InitializeFromDefinitionData` /
   `WillowPickup:CreatePickupFromMemento`; any future universal hook must skip them.
 
-## Reward Reroller compatibility (v0.3)
+## Reward Reroller compatibility (v0.4; v0.3 attempt refuted)
 
 ZetaDaemon's Reward Reroller (legacy mod, deps Enums + Structs, runs under `legacy_compat`) hooks
 `QuestAcceptGFxMovie.extCompleteConfirmed` and grants the rewards itself (`grant_rewards`), then
 blocks `ServerGrantMissionRewards` and `MissionTracker.CompleteMission` (returns False from both
 hooks). Its first roll and every reroll call `mission.GetGameStage()` from Python
 (`get_reward_data`, `validate_pool`) and build items with `InitializeInventory(balance,
-manufacturer, gamestage, None)`. Rerolls cost 2 Eridium and go through `DisplayRewardsPage` /
-`DisplayRewardsPanel` with a hand-built `PendingMissionRewardData`.
+manufacturer, gamestage, None)`. Rerolls cost 2 Eridium.
 
-Consequence: with the reroller installed, our `ServerGrantMissionRewards` hooks never see a
-turn-in. v0.3 adds a PRE hook on `WillowGame.MissionDefinition:GetGameStage` (Final|Native) that
-returns `(Block, player_level)` for missions whose `pc.GetPlayersMissionStatus(mission)` is not
-`MS_NotStarted` (0). Direct Python calls to a BoundFunction go through the hook machinery (that is
-why `prevent_hooking_direct_calls()` exists), and PayToLoot uses the same return-override pattern
-on the sibling native `MissionDefinition:GetCurrencyReward`. Native callers (the game's own
-reward roll, `GetExperienceReward`, `ActivateMission`) never hit it, so the vanilla flow is still
-handled by the field write. Side effect: UnrealScript UI that calls `GetGameStage()` on an
-accepted mission (mission log level text) sees the player's level while the toggle is on.
-`EMissionStatus`: NotStarted 0, Active 1, RequiredObjectivesComplete 2, ReadyToTurnIn 3,
-Complete 4, Failed 5.
+Verified fact that killed v0.3: `legacy_compat` appends `prevent_hooking_direct_calls` to its
+compat handlers (`.willow2-mod-manager/src/legacy_compat/__init__.py:123`) and every legacy hook
+callback runs inside `legacy_compat()` (`legacy_compat/unrealsdk/__init__.py:199-218`), so every
+Python-to-Unreal call a legacy mod makes skips all hooks (`pyunrealsdk bound_function.cpp:218-220`
+-> `inject_next_call`). A PRE return override on `MissionDefinition:GetGameStage` therefore never
+fires for the reroller. Native callers never go through hooks either. What the native getter
+returns for a locked mission is the `GameStage` field (prior-art claim, helios in-game notes), so
+the field write is the only lever, and it must land before the reroller's hook runs.
+
+v0.4 design: `_level_mission(mission, pc)` writes `GameStage` + `bGameStageLocked` (saving the
+original with `setdefault`). Called from PRE `QuestAcceptGFxMovie:SetRewardCard(MissionDef, WPC)`
+(script, flags 0x00040003) when `pc.GetPlayersMissionStatus(mission)` is Active (1),
+RequiredObjectivesComplete (2) or ReadyToTurnIn (3); from PRE `QuestAcceptGFxMovie:
+extCompleteConfirmed` as a backstop (mission = `obj.MissionList[obj.GetSelectedIndex()].MissionDef`,
+player = `obj.WPCOwner`, the same fields the reroller reads); and from PRE
+`ServerGrantMissionRewards` for scripted completions. Restored in POST
+`WillowPlayerController:MissionRewardsReceived(Mission)` (script, 0x00020103), i.e. after the
+reward is accepted, so rerolls in between still read the player's level. Open: whether
+`SetRewardCard` is called for the turn-in screen (it is the movie that handles both accept and
+complete) and whether `MissionRewardsReceived` fires on the reroller's accept path (if not, the
+stage simply stays at the player's level; harmless). `EMissionStatus`: NotStarted 0, Active 1,
+RequiredObjectivesComplete 2, ReadyToTurnIn 3, Complete 4, Failed 5.

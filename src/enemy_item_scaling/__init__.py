@@ -347,9 +347,85 @@ def on_vending_machine_reset(
         obj.SetExpLevel(player_level)
 
 
-# Mission stages we changed for a reward roll, keyed by mission path, restored once the roll is
-# done so the shared mission object goes back to what the game had.
+# Mission stages we changed so rewards roll at the player's level, keyed by mission path and
+# holding the original (GameStage, bGameStageLocked). Restored once the reward has been taken.
 _saved_mission_stages: dict[str, tuple[int, bool]] = {}
+
+# EMissionStatus values for a mission the player has accepted but not finished with:
+# Active, RequiredObjectivesComplete, ReadyToTurnIn.
+MISSION_ACCEPTED_STATUSES = frozenset({1, 2, 3})
+
+
+def _level_mission(mission: UObject, pc: UObject) -> None:
+    """
+    Sets a mission's game stage to a player's level, remembering what it was.
+
+    The native reward roll, the XP and cash, and any mod that asks `mission.GetGameStage()`
+    all read this field while the mission is locked, so writing it is what makes rewards come
+    out on level regardless of who does the rolling.
+
+    Args:
+        mission: The MissionDefinition.
+        pc: The WillowPlayerController whose level to use.
+    """
+    player_level = player_level_for(pc)
+    if player_level is None:
+        return
+    current = int(mission.GameStage)
+    locked = bool(mission.bGameStageLocked)
+    if current == player_level and locked:
+        return
+
+    if log_adjustments.value:
+        logging.info(f"{LOG_PREFIX} mission reward {mission.Name}: {current} -> {player_level}")
+    _saved_mission_stages.setdefault(mission._path_name(), (current, locked))
+    mission.GameStage = player_level
+    # Accepted missions are already locked; make sure of it so the game doesn't recompute the
+    # stage from the mission's region.
+    mission.bGameStageLocked = True
+
+
+@hook("WillowGame.QuestAcceptGFxMovie:SetRewardCard")
+def on_reward_card(
+    _obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Levels an accepted mission when its reward card is shown, before anything can turn it in.
+
+    This is early enough for mods that roll the rewards themselves on the turn-in confirm,
+    such as Reward Reroller, whose calls never go through the hooks below.
+    """
+    if not on_level_mission_rewards.value:
+        return
+    mission = args.MissionDef
+    pc = args.WPC
+    if mission is None or pc is None:
+        return
+    if int(pc.GetPlayersMissionStatus(mission)) not in MISSION_ACCEPTED_STATUSES:
+        return
+    _level_mission(mission, pc)
+
+
+@hook("WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed")
+def on_complete_confirmed(
+    obj: UObject,
+    _args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """Backstop for the reward card hook: levels the mission as the turn-in is confirmed."""
+    if not on_level_mission_rewards.value:
+        return
+    pc = obj.WPCOwner
+    if pc is None:
+        return
+    mission = obj.MissionList[obj.GetSelectedIndex()].MissionDef
+    if mission is None:
+        return
+    _level_mission(mission, pc)
 
 
 @hook("WillowGame.WillowPlayerController:ServerGrantMissionRewards")
@@ -360,42 +436,27 @@ def on_grant_mission_rewards(
     _func: BoundFunction,
 ) -> None:
     """
-    Levels a mission to the player turning it in, right before its rewards are rolled.
+    Levels a mission to the player it is rewarding, right before the game rolls the rewards.
 
-    The reward items (and the XP and cash) are generated from the mission's game stage inside
-    this call. It is expected to run on the host once per player (untested in co-op), so the
-    level comes from that player's controller, not the local one.
+    Covers completions that never show a reward card (scripted ones). Expected to run on the
+    host once per player (untested in co-op), so the level comes from that player's controller.
     """
     if not on_level_mission_rewards.value:
         return
     mission = args.Mission
     if mission is None:
         return
-    player_level = player_level_for(obj)
-    if player_level is None:
-        return
-    current = int(mission.GameStage)
-    locked = bool(mission.bGameStageLocked)
-    if current == player_level and locked:
-        return
-
-    if log_adjustments.value:
-        logging.info(f"{LOG_PREFIX} mission reward {mission.Name}: {current} -> {player_level}")
-    _saved_mission_stages[mission._path_name()] = (current, locked)
-    mission.GameStage = player_level
-    # Accepted missions are already locked; make sure of it so the game doesn't recompute the
-    # stage from the mission's region during the roll.
-    mission.bGameStageLocked = True
+    _level_mission(mission, obj)
 
 
-@hook("WillowGame.WillowPlayerController:ServerGrantMissionRewards", Type.POST_UNCONDITIONAL)
-def on_grant_mission_rewards_done(
+@hook("WillowGame.WillowPlayerController:MissionRewardsReceived", Type.POST)
+def on_mission_rewards_received(
     _obj: UObject,
     args: WrappedStruct,
     _ret: Any,
     _func: BoundFunction,
 ) -> None:
-    """Puts the mission's stage back after its rewards have been rolled."""
+    """Puts the mission's stage back once the player has taken the reward (rerolls included)."""
     mission = args.Mission
     if mission is None:
         return
@@ -403,38 +464,6 @@ def on_grant_mission_rewards_done(
     if saved is None:
         return
     mission.GameStage, mission.bGameStageLocked = saved
-
-
-# EMissionStatus.MS_NotStarted: the player hasn't accepted the mission yet.
-MISSION_NOT_STARTED = 0
-
-
-@hook("WillowGame.MissionDefinition:GetGameStage")
-def on_mission_get_game_stage(
-    obj: UObject,
-    _args: WrappedStruct,
-    _ret: Any,
-    _func: BoundFunction,
-) -> tuple[type[Block], int] | None:
-    """
-    Answers "what level is this mission" with the player's level, for missions they've accepted.
-
-    The game's own reward roll is native and never asks through here (the
-    ServerGrantMissionRewards hook covers it). This is for mods that build reward items
-    themselves from `mission.GetGameStage()`, such as Reward Reroller, so their rolls and
-    rerolls come out at the player's level too. Missions not yet accepted keep their area level.
-    """
-    if not on_level_mission_rewards.value:
-        return None
-    pc = get_pc(possibly_loading=True)
-    if pc is None:
-        return None
-    if int(pc.GetPlayersMissionStatus(obj)) == MISSION_NOT_STARTED:
-        return None
-    player_level = player_level_for(pc)
-    if player_level is None:
-        return None
-    return Block, player_level
 
 
 mod = build_mod(

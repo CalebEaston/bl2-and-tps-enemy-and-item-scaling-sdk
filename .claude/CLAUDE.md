@@ -111,13 +111,21 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 | `WillowGame.WillowPawn:SetGameStageForSpawnedInventory` and `WillowAIPawn:` same | `NewInventoryGameStage` | level of an enemy's drops |
 | `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band); vending machines (vendor toggle) |
 | `WillowGame.WillowVendingMachine:ResetInventory` | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
-| `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE + POST_UNCONDITIONAL) | `Mission`, `bGrantAltReward`; writes `Mission.GameStage` + `bGameStageLocked`, restores after | mission reward roll (plus XP and cash); expected once per player on the host, untested in co-op |
-| `WillowGame.MissionDefinition:GetGameStage` (PRE, return override `(Block, level)`) | none; gated on `pc.GetPlayersMissionStatus(obj) != 0` | script/Python callers only (native code bypasses hooks): Reward Reroller's rolls and rerolls, mission log level text |
+| `WillowGame.QuestAcceptGFxMovie:SetRewardCard` (PRE) | `MissionDef`, `WPC`; writes `MissionDef.GameStage` + `bGameStageLocked` if status in {Active, RequiredObjectivesComplete, ReadyToTurnIn} | levels the mission when its reward card shows, before any turn-in |
+| `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; mission from `obj.MissionList[obj.GetSelectedIndex()].MissionDef`, player `obj.WPCOwner` | backstop at the turn-in confirm |
+| `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE) | `Mission`, `bGrantAltReward`; same write | scripted completions with no reward card; expected once per player on the host, untested in co-op |
+| `WillowGame.WillowPlayerController:MissionRewardsReceived` (POST) | `Mission`; restores the saved stage | after the reward is taken, so rerolls in between still see the player's level |
 
 Reward Reroller (legacy mod the user plays with) blocks `ServerGrantMissionRewards` and
-`MissionTracker:CompleteMission` and grants rewards itself from `QuestAcceptGFxMovie:
-extCompleteConfirmed`, reading `mission.GetGameStage()` from Python; the `GetGameStage` override
-is what makes the toggle apply to it.
+`MissionTracker:CompleteMission` and grants rewards itself from a PRE hook on
+`QuestAcceptGFxMovie:extCompleteConfirmed`, reading `mission.GetGameStage()` from Python.
+**Legacy mods' calls never trigger hooks**: `legacy_compat` wraps every legacy callback in
+`prevent_hooking_direct_calls()` (`.willow2-mod-manager/src/legacy_compat/__init__.py:123`), so a
+return override on `GetGameStage` (the v0.3 attempt) can't reach them. Only the field write
+does, and it has to happen before their hook runs: hence the reward-card hook. PRE hooks on one
+function run in registration order, so our `extCompleteConfirmed` hook runs before the
+reroller's only when our mod was enabled first (normal launch order), which is why the reward
+card is the primary hook.
 
 The first three are the exact targets shipped by apple1417's `enemy_level_randomizer` and EdricY's
 Bouncy-Loot-God `always_on_level`; the mission one is hooked by RedxYeti's PayToLoot and its

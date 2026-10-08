@@ -1,13 +1,23 @@
 # Enemy and Item Scaling
 
+> This mod was made with the help of AI (Claude Code). The code and docs were written with it,
+> under my direction.
+
 A Borderlands 2 SDK mod that scales enemies and loot to your level.
 
 **[Download the latest release](https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk/releases/latest)**,
 drop `enemy_item_scaling.sdkmod` into your `sdk_mods` folder, restart the game. First time using SDK
 mods? See [Installation](#installation).
 
-Go back to Knuckle Dragger at level 15 and he's level 15, and so is his loot. Each bound is its own
-option, so scale what you want and leave the rest vanilla.
+Outside of UVHM, Borderlands 2 gives every area a fixed level range. Once you've out-levelled an
+area, everything in it is stuck behind you: the enemies die in a shot or two and nothing they drop
+is worth picking up. This mod puts a band around your level and keeps enemies and loot inside it.
+Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the gun he drops.
+
+Each side of the band is its own option. You can raise only the enemies that fall behind you,
+raise only the loot, cap anything that has run ahead of you, or leave any of them vanilla. The
+enemy and item settings are independent, so you can keep vanilla enemy scaling and still get gear
+at your level instead of farming for it.
 
 ## Options
 

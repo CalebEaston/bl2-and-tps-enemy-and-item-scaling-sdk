@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 import unrealsdk
 from mods_base import BoolOption, SpinnerOption, build_mod, get_pc, hook
 from unrealsdk import logging
-from unrealsdk.hooks import Block, prevent_hooking_direct_calls
+from unrealsdk.hooks import Block, Type, prevent_hooking_direct_calls
 
 if TYPE_CHECKING:
     from unrealsdk.unreal import BoundFunction, UClass, UObject, WrappedStruct
@@ -46,11 +46,29 @@ max_item_level = _level_spinner(
     "Maximum Item Level",
     "Loot that would drop above this is lowered to it.",
 )
+on_level_mission_rewards = BoolOption(
+    "On-Level Mission Rewards",
+    False,
+    description=(
+        "Mission reward items are generated at your level instead of the mission's level.\n"
+        "The mission's XP and cash rewards scale with it."
+    ),
+)
+on_level_vendors = BoolOption(
+    "On-Level Vendors",
+    False,
+    description=(
+        "Vending machines stock items at your level, including the item of the day.\n"
+        "Applies when a machine spawns or restocks."
+    ),
+)
 log_adjustments = BoolOption(
     "Log Adjustments",
     False,
     description="Print every level change to the console. Useful when testing.",
 )
+
+LOG_PREFIX = "[Enemy and Item Scaling]"
 
 
 def clamp_level(
@@ -81,17 +99,16 @@ def clamp_level(
 UVHM_PLAYTHROUGH = 2
 
 
-def get_player_level() -> int | None:
+def player_level_for(pc: UObject) -> int | None:
     """
-    Gets the local player's effective level: experience level, plus the Overpower level in UVHM.
+    Gets a player's effective level: experience level, plus the Overpower level in UVHM.
 
+    Args:
+        pc: The player's WillowPlayerController.
     Returns:
         The level that enemies and loot are measured against, or None while the player isn't
         loaded yet (a level of 0 would otherwise drag every spawn down to nothing).
     """
-    pc = get_pc(possibly_loading=True)
-    if pc is None:
-        return None
     pri = pc.PlayerReplicationInfo
     if pri is None:
         return None
@@ -103,13 +120,70 @@ def get_player_level() -> int | None:
     return level
 
 
+def get_player_level() -> int | None:
+    """
+    Gets the local player's effective level, or None while they aren't loaded yet.
+
+    Returns:
+        See `player_level_for`.
+    """
+    pc = get_pc(possibly_loading=True)
+    return None if pc is None else player_level_for(pc)
+
+
 @cache
 def _player_pawn_class() -> UClass:
     return unrealsdk.find_class("WillowPlayerPawn")
 
 
+@cache
+def _vending_machine_class() -> UClass:
+    return unrealsdk.find_class("WillowVendingMachineBase")
+
+
 def _is_player_pawn(obj: UObject) -> bool:
     return obj.Class._inherits(_player_pawn_class())
+
+
+def _is_vending_machine(obj: UObject) -> bool:
+    return obj.Class._inherits(_vending_machine_class())
+
+
+def _replace_level(
+    kind: str,
+    obj: UObject,
+    setter: BoundFunction,
+    requested: int,
+    *,
+    wanted: int,
+    player_level: int,
+) -> type[Block] | None:
+    """
+    Re-issues a level-setter call with a different level, if it differs from the requested one.
+
+    Args:
+        kind: What is being scaled, for the log line.
+        obj: The object whose level is being set.
+        setter: The level setter the game is calling, bound to `obj`.
+        requested: The level the game asked for.
+        wanted: The level we want instead.
+        player_level: The player's level, for the log line.
+    Returns:
+        Block if the call was replaced, None to let the original run untouched.
+    """
+    if wanted == requested:
+        return None
+
+    if log_adjustments.value:
+        logging.info(
+            f"{LOG_PREFIX} {kind} {obj.Name}: {requested} -> {wanted} (player {player_level})",
+        )
+
+    # The args struct is a copy, so the only way to change the level is to call the setter
+    # ourselves and block the original call. Direct calls in here don't re-trigger our hooks.
+    with prevent_hooking_direct_calls():
+        setter(wanted)
+    return Block
 
 
 def _apply_band(
@@ -143,20 +217,42 @@ def _apply_band(
     if player_level is None:
         return None
     wanted = clamp_level(requested, player_level, floor_offset, ceiling_offset)
-    if wanted == requested:
+    return _replace_level(kind, obj, setter, requested, wanted=wanted, player_level=player_level)
+
+
+def _apply_on_level(
+    kind: str,
+    obj: UObject,
+    setter: BoundFunction,
+    requested: int,
+    *,
+    enabled: BoolOption,
+) -> type[Block] | None:
+    """
+    Replaces a level-setter call with the player's level, when the toggle is on.
+
+    Args:
+        kind: What is being scaled, for the log line.
+        obj: The object whose level is being set.
+        setter: The level setter the game is calling, bound to `obj`.
+        requested: The level the game asked for.
+        enabled: The toggle for this source.
+    Returns:
+        Block if the call was replaced, None to let the original run.
+    """
+    if not enabled.value:
         return None
-
-    if log_adjustments.value:
-        logging.info(
-            f"[Enemy and Item Scaling] {kind} {obj.Name}: {requested} -> {wanted}"
-            f" (player {player_level})",
-        )
-
-    # The args struct is a copy, so the only way to change the level is to call the setter
-    # ourselves and block the original call. Direct calls in here don't re-trigger our hooks.
-    with prevent_hooking_direct_calls():
-        setter(wanted)
-    return Block
+    player_level = get_player_level()
+    if player_level is None:
+        return None
+    return _replace_level(
+        kind,
+        obj,
+        setter,
+        requested,
+        wanted=player_level,
+        player_level=player_level,
+    )
 
 
 @hook("WillowGame.WillowPawn:SetGameStage")
@@ -202,8 +298,15 @@ def on_interactive_object_game_stage(
     _ret: Any,
     func: BoundFunction,
 ) -> type[Block] | None:
-    """Scales the level of chests, lockers and other containers."""
+    """
+    Scales the level of chests, slot machines and other containers, and of vending machines.
+
+    Vending machines are interactive objects too, but they get their own toggle rather than the
+    item band.
+    """
     requested = int(args.NewGameStage)
+    if _is_vending_machine(obj):
+        return _apply_on_level("vendor", obj, func, requested, enabled=on_level_vendors)
     return _apply_band(
         "container",
         obj,
@@ -214,6 +317,102 @@ def on_interactive_object_game_stage(
     )
 
 
+@hook("WillowGame.WillowVendingMachine:ResetInventory")
+def on_vending_machine_reset(
+    obj: UObject,
+    _args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Re-levels a vending machine right before it restocks.
+
+    A machine keeps the level it spawned with, so without this the 20 minute restock (and paid
+    resets) would keep producing stock at the level you had when you entered the map.
+    """
+    if not on_level_vendors.value:
+        return
+    player_level = get_player_level()
+    if player_level is None:
+        return
+    current = int(obj.GameStage)
+    if current == player_level:
+        return
+
+    if log_adjustments.value:
+        logging.info(f"{LOG_PREFIX} vendor restock {obj.Name}: {current} -> {player_level}")
+    # Same pair of setters the game's own factory calls when it spawns the machine
+    with prevent_hooking_direct_calls():
+        obj.SetGameStage(player_level)
+        obj.SetExpLevel(player_level)
+
+
+# Mission stages we changed for a reward roll, keyed by mission path, restored once the roll is
+# done so the shared mission object goes back to what the game had.
+_saved_mission_stages: dict[str, tuple[int, bool]] = {}
+
+
+@hook("WillowGame.WillowPlayerController:ServerGrantMissionRewards")
+def on_grant_mission_rewards(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Levels a mission to the player turning it in, right before its rewards are rolled.
+
+    The reward items (and the XP and cash) are generated from the mission's game stage inside
+    this call. It is expected to run on the host once per player (untested in co-op), so the
+    level comes from that player's controller, not the local one.
+    """
+    if not on_level_mission_rewards.value:
+        return
+    mission = args.Mission
+    if mission is None:
+        return
+    player_level = player_level_for(obj)
+    if player_level is None:
+        return
+    current = int(mission.GameStage)
+    locked = bool(mission.bGameStageLocked)
+    if current == player_level and locked:
+        return
+
+    if log_adjustments.value:
+        logging.info(f"{LOG_PREFIX} mission reward {mission.Name}: {current} -> {player_level}")
+    _saved_mission_stages[mission._path_name()] = (current, locked)
+    mission.GameStage = player_level
+    # Accepted missions are already locked; make sure of it so the game doesn't recompute the
+    # stage from the mission's region during the roll.
+    mission.bGameStageLocked = True
+
+
+@hook("WillowGame.WillowPlayerController:ServerGrantMissionRewards", Type.POST_UNCONDITIONAL)
+def on_grant_mission_rewards_done(
+    _obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """Puts the mission's stage back after its rewards have been rolled."""
+    mission = args.Mission
+    if mission is None:
+        return
+    saved = _saved_mission_stages.pop(mission._path_name(), None)
+    if saved is None:
+        return
+    mission.GameStage, mission.bGameStageLocked = saved
+
+
 mod = build_mod(
-    options=[min_enemy_level, max_enemy_level, min_item_level, max_item_level, log_adjustments],
+    options=[
+        min_enemy_level,
+        max_enemy_level,
+        min_item_level,
+        max_item_level,
+        on_level_mission_rewards,
+        on_level_vendors,
+        log_adjustments,
+    ],
 )

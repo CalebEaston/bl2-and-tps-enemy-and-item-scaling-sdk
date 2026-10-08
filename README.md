@@ -16,23 +16,30 @@ Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does th
 
 Each side of the band is its own option. You can raise only the enemies that fall behind you,
 raise only the loot, cap anything that has run ahead of you, or leave any of them vanilla. The
-enemy and item settings are independent, so you can keep vanilla enemy scaling and still get gear
-at your level instead of farming for it.
+enemy and item settings are independent, so you can keep vanilla enemy scaling and still get the
+gear they drop on your level.
 
 ## Options
 
-All four take `Vanilla`, `Player Level`, or `Within 1` to `Within 10 Levels`:
+The four level bounds take `Vanilla`, `Player Level`, or `Within 1` to `Within 10 Levels`:
 
 - **Minimum Enemy Level** - enemies below this are raised to it
 - **Maximum Enemy Level** - enemies above this are lowered to it
-- **Minimum Item Level** - loot below this is raised to it
+- **Minimum Item Level** - loot below this is raised to it (enemy drops, chests, slot machines,
+  boss drops)
 - **Maximum Item Level** - loot above this is lowered to it
-- **Log Adjustments** - prints each change to the console
 
-Everything starts on `Vanilla`. Enemy and item settings don't affect each other. In co-op only the
-host's settings matter.
+Two on/off switches:
 
-Not covered yet: vendors, mission rewards, and enemies already alive when you level up.
+- **On-Level Mission Rewards** - mission reward items come out at your level (the XP and cash
+  scale with them)
+- **On-Level Vendors** - vending machines stock at your level, item of the day included
+
+And **Log Adjustments** prints each change to the console.
+
+Everything starts off or on `Vanilla`. The settings don't affect each other. In co-op only the
+host's settings matter. Enemies already alive when you level up keep their level until they
+respawn.
 
 ## Installation
 

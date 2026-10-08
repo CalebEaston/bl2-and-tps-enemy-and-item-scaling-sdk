@@ -15,8 +15,11 @@ Four spinner options, each `Vanilla` | `Player Level` | `Within 1 Level` ... `Wi
 | Minimum Item Level | no floor | item level raised to at least `player - N` |
 | Maximum Item Level | no cap | item level lowered to at most `player + N` |
 
-`player` = `PlayerReplicationInfo.ExpLevel + OverpowerChoiceValue` of the local player. Item bounds
-are independent of enemy bounds. A fifth option, `Log Adjustments`, prints every change to console.
+`player` = `PlayerReplicationInfo.ExpLevel`, plus `OverpowerChoiceValue` in UVHM only. Item bounds
+are independent of enemy bounds. Two `BoolOption`s (v2): `On-Level Mission Rewards` (the mission
+is levelled to the player turning it in before its rewards, XP and cash are rolled) and
+`On-Level Vendors` (vending machines are set to the player's level when they spawn and before
+they restock; vendors are excluded from the item band). `Log Adjustments` prints every change.
 
 Current priority: **get a working version in-game first, then patch**. Don't over-engineer for
 compatibility yet; see "Later" at the bottom for the compatibility work that is deferred. Keep it
@@ -106,10 +109,15 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 |---|---|---|
 | `WillowGame.WillowPawn:SetGameStage` | `NewGameStage` | enemy level at spawn |
 | `WillowGame.WillowPawn:SetGameStageForSpawnedInventory` and `WillowAIPawn:` same | `NewInventoryGameStage` | level of an enemy's drops |
-| `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests/containers |
+| `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band); vending machines (vendor toggle) |
+| `WillowGame.WillowVendingMachine:ResetInventory` | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
+| `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE + POST_UNCONDITIONAL) | `Mission`, `bGrantAltReward`; writes `Mission.GameStage` + `bGameStageLocked`, restores after | mission reward roll (plus XP and cash); expected once per player on the host, untested in co-op |
 
-These are the exact targets shipped by apple1417's `enemy_level_randomizer` and EdricY's
-Bouncy-Loot-God `always_on_level`; see `docs/sdk-notes.md` for evidence and alternatives.
+The first three are the exact targets shipped by apple1417's `enemy_level_randomizer` and EdricY's
+Bouncy-Loot-God `always_on_level`; the mission one is hooked by RedxYeti's PayToLoot and its
+`GameStage` write is what BouncyLootGod and Roguelands do before calling it. Raid-boss dedicated
+drops, Moxxi tips and slot-machine payouts (`Behavior_SpawnItems`) take their level from the pawn
+or container they come from, so the hooks above cover them. See `docs/sdk-notes.md`.
 
 ## Later (deferred on purpose)
 
@@ -117,11 +125,13 @@ Bouncy-Loot-God `always_on_level`; see `docs/sdk-notes.md` for evidence and alte
   Nexus). Plan: get their folders, grep their hook targets against ours, and if they overlap
   consider `Type.POST_UNCONDITIONAL` hooks that read back `obj.GetGameStage()` and only re-set
   out-of-band values, so other mods' pre-hooks run first.
-- v2: every remaining item source, mission rewards first, then vendors, then the rest. Two new
-  `BoolOption`s, default off: `On-Level Mission Rewards` and `On-Level Vendors`, each generating
-  that source at the player's effective level, independent of the item min/max spinners.
-- After v2: a Nexus Mods listing. Nexus can't be automated, so write the summary, BBCode
-  description, requirements, install steps and category into `docs/nexus.md` for the user to paste.
+- Known v2 trade-offs, left simple on purpose: mission XP and cash scale with the reward level
+  (restore vanilla XP via a `(Block, value)` return override on
+  `WillowGame.MissionDefinition:GetExperienceReward` if ever unwanted); base-game vendor stock keeps
+  its vanilla `-2..0` level variance (`GD_Economy.VendingMachine.Init_VendingMachine_LootGamestageVariance`,
+  a global object other mods edit too); the item of the day is exactly the machine's stage.
+- Nexus Mods listing: Nexus can't be automated, so `docs/nexus.md` holds the summary, BBCode
+  description, requirements, install steps and category for the user to paste.
 - Out of scope by decision (2026-10-08): re-levelling enemies that are already alive when the
   player levels up. They keep their spawn level until they respawn.
 - Local unit tests for `clamp_level` (needs a conftest that stubs `mods_base`/`unrealsdk`).

@@ -3,7 +3,8 @@
 Nothing here has run in the game yet; this is the order to check things in, and what each check
 settles. Turn on `Log Adjustments` for all of it. Log lines look like
 `[Enemy and Item Scaling] enemy WillowAIPawn_12: 3 -> 15 (player 15)` with the kind being
-`enemy`, `loot` or `container`, and only appear when a level actually changed.
+`enemy`, `loot`, `container` or `vendor`, and only appear when a level actually changed. The v2
+lines `vendor restock X: a -> b` and `mission reward M: a -> b` have no `(player N)` suffix.
 
 ## 0. Console probes (before trusting anything)
 
@@ -84,3 +85,47 @@ Search `<game>/Binaries/Win32/Plugins/unrealsdk.log` for `Traceback`, `NoneType`
   interactive objects); if they do, the item band already affects their stock.
 - Whether down-levelling chests in Mercenary Day (`Xmas_P`) breaks them, as Bouncy-Loot-God's
   exclusion suggests.
+
+## 7. Mission rewards (v2)
+
+`On-Level Mission Rewards` on, level 15+ character, a cheap leftover level-5 side mission (e.g. in
+Southern Shelf). Before turning in, probe that the hook target exists and the fields are there:
+
+```
+py import unrealsdk; print([p.Name for p in unrealsdk.find_object('Function', 'WillowGame.WillowPlayerController:ServerGrantMissionRewards')._properties()])
+```
+
+Expect `Mission` and `bGrantAltReward`. Turn the mission in: expect one
+`mission reward <Mission_...>: 5 -> 15` line, the reward card showing level 15 gear, and the XP
+reward noticeably larger than the mission log said. If the card still shows level 5, the native
+reward roll reads the per-player copy of the stage, not `MissionDefinition.GameStage`; the
+verified fallback is a PRE hook on `WillowPlayerController:ReceiveWeaponReward` /
+`:ReceiveItemReward` rewriting `DefinitionData.ManufacturerGradeIndex` and `.GameStage` (see
+`docs/sdk-notes.md`).
+
+## 8. Vendors (v2)
+
+`On-Level Vendors` on, level 15+ character, Southern Shelf (vanilla vendors around level 3-5).
+
+- On map load expect `vendor WillowVendingMachine_N: 3 -> 15` per machine (it is logged as
+  `vendor`, not `container`). If no vendor line appears at all, the factory sets the machine's
+  stage natively and the restock hook is the only lever: wait for a restock or pay for one.
+- Open a weapon vendor: stock should be level 13-15 (vanilla rolls `-2..0` below the machine's
+  level) and the item of the day exactly 15.
+- Pay to reset a machine (or wait 20 minutes): expect a `vendor restock ...` line only if your
+  level changed since the machine spawned, and the new stock at the new level. If the paid reset
+  logs but the 20-minute restock never does, the timer bypasses `ResetInventory`; stack
+  `@hook("WillowGame.WillowVendingMachine:ClearInventory")` on the same callback.
+- With the toggle off, vendors must be untouched even when the item bounds are set.
+
+## Things only the game can tell us (v2)
+
+- Whether raid-boss dedicated drops (`Behavior_SpawnItems`) take the pawn's enemy level or its
+  loot level: kill a boss with Minimum Enemy Level vanilla and Minimum Item Level = Player Level
+  and compare the dedicated drop's level with the pool drops.
+- Whether a mission turned in *below* its level (a low character, or a co-op client) still gets
+  an item: reward pools have minimum-level gates (most gear pools open at 7, relics at 15), and
+  the native roll may drop a gated pool rather than clamp. Turn in a gated mission at level 5
+  with the toggle on.
+- Co-op: whether `ServerGrantMissionRewards` runs once per player on the host with that player's
+  controller (expected, untested), so each player gets rewards at their own level.

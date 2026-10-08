@@ -139,3 +139,81 @@ All three are PythonSDK mods on Nexus (not BLCMM text mods), so they can registe
   a TPS install on first launch; Jack has no melee animation if Athena is also installed)
 Nexus blocks automated fetches; to audit their hook targets, grep their mod folders for `@hook(` and
 `add_hook(`.
+
+## v2 research (2026-10-08): mission rewards, vendors, other item sources
+
+Full briefs were produced by four readers over the prior-art mods, a generated UE3 SDK dump of
+BL2's classes (`RobChiocchio/BL2-SDK`), game-generated stubs (`Justin99x/bl-py-stubs`) and
+`apocalyptech/ft-explorer` object dumps. The facts the code relies on:
+
+Mission rewards:
+- `WillowGame.WillowPlayerController:ServerGrantMissionRewards(Mission, bGrantAltReward)` is a
+  script function (hookable), run on the host once per player. Inside it the game rolls
+  `Reward.RewardItems`/`RewardItemPools` into `PendingMissionRewardData.WeaponRewards[2]` /
+  `ItemRewards[2]` at the mission's game stage, and computes XP and cash from the same stage.
+  Hooked by PayToLoot (new SDK); BouncyLootGod and Roguelands write `MissionDefinition.GameStage`
+  before calling it, which is what v2 does in a PRE hook.
+- `MissionDefinition.GameStage` and `bGameStageLocked` are transient fields; an accepted mission
+  is locked, an unaccepted one recomputes from `GameStageRegion` on every `GetGameStage()`.
+  `GetGameStage()`, `GetItemRewardsForPlayer()`, `GetExperienceReward()` are native, so a return
+  override would not reach the native reward roll; the field write does.
+- Open: whether the roll reads the per-player saved copy
+  (`pc.MissionPlaythroughs[pt].MissionList[pc.NativeGetMissionIndex(m)].GameStage`) instead.
+  Verified fallback: PRE hooks on `WillowPlayerController:ReceiveWeaponReward/ReceiveItemReward`
+  (`Mission`, `DefinitionData`) rewriting `ManufacturerGradeIndex` (index 3) and `GameStage`
+  (index 15) and re-calling (RogueLands RewardScaler pattern). Display-time alternative:
+  `MissionRewardGFxObject:SetUpRewardsPage` rewriting `obj.RewardData` (ProjectileRandomizer).
+- Reward pools gate on `Min/MaxGameStageRequirement` (`GD_Itempools.Scheduling.GameStage_NN`);
+  raising the stage never falls below a minimum.
+
+Vendors:
+- `WillowVendingMachine` -> `WillowVendingMachineBase` -> `WillowInteractiveObject`; none of the
+  vendor classes redeclare `SetGameStage`, so v1's `WillowInteractiveObject:SetGameStage` hook
+  fires for them (if the factory calls it; juso40's factory reconstruction does
+  `SetGameStage` -> ... -> `ResetInventory`). `WillowInteractiveObject` has plain `GameStage` and
+  `ExpLevel` int properties.
+- Stock level = machine stage + `-2..0` from `GD_Economy.VendingMachine.Init_VendingMachine_LootGamestageVariance`
+  (base game; Torgue/Seraph vendors have no variance). Item of the day = `FeaturedItemGameStage`
+  -> `GD_Population_Shopping.Balance.Init_FeaturedItem_GameStage` = `1 * GameStage + 0`, i.e.
+  exactly the machine's stage. Sanctuary in-game observation: items 7-9 at stage 9.
+- `WillowVendingMachine:ResetInventory()` regenerates stock and featured item at the stored stage;
+  called at spawn, on the 20-minute global timer (`WillowGameInfo.SecondsUntilShopsReset`) and on
+  paid resets (`WillowPlayerController:ServerPlayerResetShop`). apple1417's cheats call it via
+  `find_all("WillowVendingMachine")`. v2 PRE-hooks it and calls `obj.SetGameStage(level)` first.
+- Crazy Earl's black market sells SDUs built per player; not a level source.
+
+Everything else:
+- Candidate single choke point for "every freshly generated item" (not built; GUESS that the
+  game's pool spawner calls it): `WillowGame.WillowWeapon:InitializeInventory` and
+  `WillowGame.WillowItem:InitializeInventory`, events with params
+  `(InBalanceDef, InManufacturer, InGradeIndex, InAdditionalQueryInterfaceSource)`, no out params,
+  every inventory class resolves to one of the two, and `InGradeIndex` is the item level. A PRE
+  hook could re-call with a clamped grade before parts are rolled; must skip player-owned items
+  (`InAdditionalQueryInterfaceSource` a player class). Probe first: hook it log-only and see
+  whether it fires for a pool drop. Rejected alternatives: `ItemPool:SpawnBalancedInventoryFromPool`
+  (out param: block+re-call leaves the caller with nothing) and
+  `Engine.WillowInventory:ClientInitializeInventoryFromDefinition` (universal but late, parts
+  already rolled, runs on clients).
+- The mission hook restores `GameStage`/`bGameStageLocked` in a POST_UNCONDITIONAL hook on the
+  same function (the rolled items keep their level; this only stops a repeatable mission, or
+  another mod calling `ServerGrantMissionRewards` on an unaccepted mission, from inheriting a
+  stale locked stage later in the session).
+- Not built, by the simplicity rule: also writing the per-player copy
+  `obj.MissionPlaythroughs[pt].MissionList[idx].GameStage`, and re-rolling vendors on
+  `WillowPlayerController:ExpLevelUp` (POST) via `find_all("WillowVendingMachine")` ->
+  `ResetInventory()`. Each is a few lines if testing shows it is needed.
+- `WillowGame.Behavior_SpawnItems:ApplyBehaviorToContext` (raid-boss dedicated drops, Warrior,
+  BNK-3R, Moxxi tips, slot machine payouts, loot spewers) takes no level argument; the level comes
+  from the context object's stage (pawn or interactive object), which the existing hooks set.
+  Open: whether a pawn context uses `GetGameStage()` (enemy band) or
+  `GetGameStageForSpawnedInventory()` (item band).
+- Loot midgets, chubbies, Vermivorous, Terramorphous pool drops are ordinary pawn drops; loot
+  midget containers spawn a pawn through the population system. Slot machines
+  (`gd_slotmachine.SlotMachine`, Tina/Torgue variants), the dice chest, the golden chest and the
+  treasure room chests are interactive objects.
+- Alternative architecture (not taken): set every `GD_*_GameStages.Balance.*.BalanceByRegion[]
+  .Min/MaxDefaultGameStage` to the player level on map load (Rossays' Game Scaler, juso40's
+  ScaledTVHM). Moves everything at once, but is "set to player level" only, is cached per region
+  on the controller, and does nothing in UVHM.
+- Save-loaded, bank and memento items go through `InitializeFromDefinitionData` /
+  `WillowPickup:CreatePickupFromMemento`; any future universal hook must skip them.

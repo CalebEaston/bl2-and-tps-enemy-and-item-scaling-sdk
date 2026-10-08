@@ -405,6 +405,38 @@ def on_grant_mission_rewards_done(
     mission.GameStage, mission.bGameStageLocked = saved
 
 
+# EMissionStatus.MS_NotStarted: the player hasn't accepted the mission yet.
+MISSION_NOT_STARTED = 0
+
+
+@hook("WillowGame.MissionDefinition:GetGameStage")
+def on_mission_get_game_stage(
+    obj: UObject,
+    _args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> tuple[type[Block], int] | None:
+    """
+    Answers "what level is this mission" with the player's level, for missions they've accepted.
+
+    The game's own reward roll is native and never asks through here (the
+    ServerGrantMissionRewards hook covers it). This is for mods that build reward items
+    themselves from `mission.GetGameStage()`, such as Reward Reroller, so their rolls and
+    rerolls come out at the player's level too. Missions not yet accepted keep their area level.
+    """
+    if not on_level_mission_rewards.value:
+        return None
+    pc = get_pc(possibly_loading=True)
+    if pc is None:
+        return None
+    if int(pc.GetPlayersMissionStatus(obj)) == MISSION_NOT_STARTED:
+        return None
+    player_level = player_level_for(pc)
+    if player_level is None:
+        return None
+    return Block, player_level
+
+
 mod = build_mod(
     options=[
         min_enemy_level,

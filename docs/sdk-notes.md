@@ -217,3 +217,25 @@ Everything else:
   on the controller, and does nothing in UVHM.
 - Save-loaded, bank and memento items go through `InitializeFromDefinitionData` /
   `WillowPickup:CreatePickupFromMemento`; any future universal hook must skip them.
+
+## Reward Reroller compatibility (v0.3)
+
+ZetaDaemon's Reward Reroller (legacy mod, deps Enums + Structs, runs under `legacy_compat`) hooks
+`QuestAcceptGFxMovie.extCompleteConfirmed` and grants the rewards itself (`grant_rewards`), then
+blocks `ServerGrantMissionRewards` and `MissionTracker.CompleteMission` (returns False from both
+hooks). Its first roll and every reroll call `mission.GetGameStage()` from Python
+(`get_reward_data`, `validate_pool`) and build items with `InitializeInventory(balance,
+manufacturer, gamestage, None)`. Rerolls cost 2 Eridium and go through `DisplayRewardsPage` /
+`DisplayRewardsPanel` with a hand-built `PendingMissionRewardData`.
+
+Consequence: with the reroller installed, our `ServerGrantMissionRewards` hooks never see a
+turn-in. v0.3 adds a PRE hook on `WillowGame.MissionDefinition:GetGameStage` (Final|Native) that
+returns `(Block, player_level)` for missions whose `pc.GetPlayersMissionStatus(mission)` is not
+`MS_NotStarted` (0). Direct Python calls to a BoundFunction go through the hook machinery (that is
+why `prevent_hooking_direct_calls()` exists), and PayToLoot uses the same return-override pattern
+on the sibling native `MissionDefinition:GetCurrencyReward`. Native callers (the game's own
+reward roll, `GetExperienceReward`, `ActivateMission`) never hit it, so the vanilla flow is still
+handled by the field write. Side effect: UnrealScript UI that calls `GetGameStage()` on an
+accepted mission (mission log level text) sees the player's level while the toggle is on.
+`EMissionStatus`: NotStarted 0, Active 1, RequiredObjectivesComplete 2, ReadyToTurnIn 3,
+Complete 4, Failed 5.

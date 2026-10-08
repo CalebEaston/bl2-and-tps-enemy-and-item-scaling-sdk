@@ -112,6 +112,12 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 | `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band); vending machines (vendor toggle) |
 | `WillowGame.WillowVendingMachine:ResetInventory` | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
 | `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE + POST_UNCONDITIONAL) | `Mission`, `bGrantAltReward`; writes `Mission.GameStage` + `bGameStageLocked`, restores after | mission reward roll (plus XP and cash); expected once per player on the host, untested in co-op |
+| `WillowGame.MissionDefinition:GetGameStage` (PRE, return override `(Block, level)`) | none; gated on `pc.GetPlayersMissionStatus(obj) != 0` | script/Python callers only (native code bypasses hooks): Reward Reroller's rolls and rerolls, mission log level text |
+
+Reward Reroller (legacy mod the user plays with) blocks `ServerGrantMissionRewards` and
+`MissionTracker:CompleteMission` and grants rewards itself from `QuestAcceptGFxMovie:
+extCompleteConfirmed`, reading `mission.GetGameStage()` from Python; the `GetGameStage` override
+is what makes the toggle apply to it.
 
 The first three are the exact targets shipped by apple1417's `enemy_level_randomizer` and EdricY's
 Bouncy-Loot-God `always_on_level`; the mission one is hooked by RedxYeti's PayToLoot and its

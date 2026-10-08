@@ -1,5 +1,10 @@
 ## Changelog
 
+### Enemy and Item Scaling v0.3
+- `On-Level Mission Rewards` now also works with mods that roll mission rewards themselves, such
+  as Reward Reroller: an accepted mission reports your level to them, so rolls and rerolls come
+  out on level.
+
 ### Enemy and Item Scaling v0.2
 - Added `On-Level Mission Rewards`: mission reward items, and the XP and cash with them, are
   generated at your level.

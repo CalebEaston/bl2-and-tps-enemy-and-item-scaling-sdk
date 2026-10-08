@@ -1,6 +1,6 @@
 [project]
 name = "enemy_item_scaling"
-version = "0.2"
+version = "0.3"
 authors = [{ name = "CalebEaston" }]
 description = """\
 Keeps enemy and item levels within a band around your level, so areas you come back to and the \

@@ -36,7 +36,7 @@ The four level bounds take `Vanilla`, `Player Level`, or `Within 1` to `Within 1
 Two on/off switches:
 
 - **On-Level Mission Rewards** - mission reward items come out at your level (the XP and cash
-  scale with them)
+  scale with them). Works with Reward Reroller: rerolls come out at your level too.
 - **On-Level Vendors** - vending machines stock at your level, item of the day included
 
 And **Log Adjustments** prints each change to the console.

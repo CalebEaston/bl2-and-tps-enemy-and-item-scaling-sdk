@@ -77,15 +77,30 @@ def clamp_level(
     return level
 
 
-def get_player_level() -> int:
+# GetCurrentPlaythrough() is 0-based: Normal, TVHM, UVHM. Overpower levels only exist in UVHM.
+UVHM_PLAYTHROUGH = 2
+
+
+def get_player_level() -> int | None:
     """
-    Gets the local player's effective level: their experience level plus any Overpower level.
+    Gets the local player's effective level: experience level, plus the Overpower level in UVHM.
 
     Returns:
-        The level that enemies and loot are measured against.
+        The level that enemies and loot are measured against, or None while the player isn't
+        loaded yet (a level of 0 would otherwise drag every spawn down to nothing).
     """
-    pc = get_pc()
-    return int(pc.PlayerReplicationInfo.ExpLevel) + int(pc.OverpowerChoiceValue)
+    pc = get_pc(possibly_loading=True)
+    if pc is None:
+        return None
+    pri = pc.PlayerReplicationInfo
+    if pri is None:
+        return None
+    level = int(pri.ExpLevel)
+    if level <= 0:
+        return None
+    if pc.GetCurrentPlaythrough() == UVHM_PLAYTHROUGH:
+        level += int(pc.OverpowerChoiceValue)
+    return level
 
 
 @cache
@@ -125,6 +140,8 @@ def _apply_band(
         return None
 
     player_level = get_player_level()
+    if player_level is None:
+        return None
     wanted = clamp_level(requested, player_level, floor_offset, ceiling_offset)
     if wanted == requested:
         return None

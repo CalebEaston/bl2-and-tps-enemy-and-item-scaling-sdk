@@ -1,4 +1,4 @@
-# Tooling config only. The mod's own metadata lives in src/level_leash/pyproject.toml.
+# Tooling config only. The mod's own metadata lives in src/enemy_item_scaling/pyproject.toml.
 # The pyright and ruff settings mirror the bl-sdk repos so this code matches the SDK's style.
 
 [tool.pyright]

@@ -19,7 +19,9 @@ Four spinner options, each `Vanilla` | `Player Level` | `Within 1 Level` ... `Wi
 are independent of enemy bounds. A fifth option, `Log Adjustments`, prints every change to console.
 
 Current priority: **get a working version in-game first, then patch**. Don't over-engineer for
-compatibility yet; see "Later" at the bottom for the compatibility work that is deferred.
+compatibility yet; see "Later" at the bottom for the compatibility work that is deferred. Keep it
+simple: an option that only takes effect after a save-quit-continue is acceptable, so prefer the
+plain approach over live re-application.
 
 ## Layout
 
@@ -50,9 +52,9 @@ go at the repo root, not under `src/`.
   no-op. Turn on `Log Adjustments` and read the console/log when testing.
 - Hooks are inert until the mod is enabled. Never pass `immediately_enable=True`.
 - Options: pass `options=[...]` explicitly (module-scan order is unstable). `on_change_*`
-  callbacks receive the NEW value while `opt.value` is still the OLD one. `SliderOption.value` is a
-  float even with `is_integer=True`. Don't call `option.reset()` (added in mods_base 1.13; the game
-  ships 1.12).
+  callbacks receive the NEW value while `opt.value` is still the OLD one. `SliderOption.value` is
+  typed `float` (wrap in `int()` for pyright) and may be int or float at runtime. Don't call
+  `option.reset()` (added in mods_base 1.13; the game ships 1.12).
 - Skip the player's own pawn in pawn hooks (`WillowPlayerPawn` goes through `SetGameStage` too).
 - The first 1024 bytes of `__init__.py` must not contain `from Mods.`, `from ..ModMenu import` or
   `BL2MOD):`, even in a comment, or the loader treats the mod as legacy.
@@ -109,5 +111,11 @@ Bouncy-Loot-God `always_on_level`; see `docs/sdk-notes.md` for evidence and alte
   Nexus). Plan: get their folders, grep their hook targets against ours, and if they overlap
   consider `Type.POST_UNCONDITIONAL` hooks that read back `obj.GetGameStage()` and only re-set
   out-of-band values, so other mods' pre-hooks run first.
-- Vendors, mission rewards and already-spawned enemies when the player levels up.
+- v2: every remaining item source, mission rewards first, then vendors, then the rest. Two new
+  `BoolOption`s, default off: `On-Level Mission Rewards` and `On-Level Vendors`, each generating
+  that source at the player's effective level, independent of the item min/max spinners.
+- After v2: a Nexus Mods listing. Nexus can't be automated, so write the summary, BBCode
+  description, requirements, install steps and category into `docs/nexus.md` for the user to paste.
+- Out of scope by decision (2026-10-08): re-levelling enemies that are already alive when the
+  player levels up. They keep their spawn level until they respawn.
 - Local unit tests for `clamp_level` (needs a conftest that stubs `mods_base`/`unrealsdk`).

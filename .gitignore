@@ -9,7 +9,7 @@ __pycache__/
 *.sdkmod
 *.zip
 
-# The SDK writes mod settings into a settings/ folder next to the mods it loads
+# Defensive: the SDK keeps settings in <game>/sdk_mods/settings/, but never commit one if it appears
 settings/
 
 # Editors

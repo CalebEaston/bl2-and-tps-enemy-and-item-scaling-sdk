@@ -10,7 +10,8 @@ Reference gathered on 2026-10-08 from the willow2-mod-manager v3.8 release, the 
   Ships `Binaries/Win32/ddraw.dll` (plugin loader), `Binaries/Win32/Plugins/{unrealsdk.dll,
   pyunrealsdk.dll, python314.*, unrealsdk.toml}` and `sdk_mods/` with `__main__.py`, `.stubs/`,
   `settings/` and the base packages as `.sdkmod` zips (`mods_base` 1.12, `willow2_mod_menu` 3.6).
-- Legacy PythonSDK is archived (2025-01-01). Legacy mods still load through `legacy_compat`.
+- Legacy PythonSDK (https://github.com/bl-sdk/PythonSDK) was archived on 2025-01-01 per its GitHub
+  page. Legacy mods still load through `legacy_compat`.
 - Install guide / mod DB: https://bl-sdk.github.io/willow2-mod-db/  (FAQ has the Proton notes)
 - Developer Discord: https://discord.gg/VJXtHvh
 
@@ -24,7 +25,8 @@ Reference gathered on 2026-10-08 from the willow2-mod-manager v3.8 release, the 
 - Legacy detection regex on the first 1024 bytes of `__init__.py`:
   `from (\.\.ModMenu|Mods(\.\S+)?) import|BL2MOD\):`
 - Import failures show only the last traceback frame unless `FULL_TRACEBACKS = True` in
-  `__main__.py` (only editable when `init_script` points at a checkout of the manager's `src/`).
+  `__main__.py`. The release ships `<game>/sdk_mods/__main__.py` as a plain file, so edit it in
+  place, or point `init_script` at a checkout of the manager's `src/`.
 - `mod_manager.extra_sys_path` adds plain import paths that are not scanned for mods (3.8+).
 - Settings: `<MODS_DIR>/settings/<module>.json` with `{"enabled", "options", "keybinds"}`; written
   on enable/disable and when leaving a mod's options screen. Missing file = mod starts disabled.
@@ -118,8 +120,9 @@ Item level:
 - Steam launch options: `WINEDLLOVERRIDES="ddraw=n,b" %command% -pf_tricks=vcrun2022`; the FAQ
   recommends recent Proton GE builds and notes some builds hit a pybind "returned NULL without
   setting an exception" bug that the loader reports at startup (`check_proton_bugs`).
-- The embedded interpreter is Windows CPython under Wine: `pathlib.Path` is `WindowsPath`,
-  `sys.executable` is `borderlands2.exe`, so toml paths are Windows paths (`Z:\...`). Use TOML
+- The embedded interpreter is Windows CPython under Wine: `pathlib.Path` is `WindowsPath`, and
+  `mods_base.Game.get_current()` expects `sys.executable` to be `borderlands2.exe` (mod.py), so
+  toml paths are Windows paths (`Z:\...`). Use TOML
   literal strings (`'...'`) to avoid escaping backslashes. Forward slashes probably work but are
   untested.
 - Console key defaults to Tilde (`WillowInput.ini` `ConsoleKey=`); press twice.

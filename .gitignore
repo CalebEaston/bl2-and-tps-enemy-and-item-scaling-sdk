@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyd
+*.so
+.venv/
+
+# Packaged mod and SDK downloads
+*.sdkmod
+*.zip
+
+# The SDK writes mod settings into a settings/ folder next to the mods it loads
+settings/
+
+# Editors
+.vs/
+.vscode/
+.idea/
+.nvim.lua

@@ -69,6 +69,7 @@ A step-by-step version with troubleshooting is in the [url=https://github.com/Ca
 [list]
 [*]Source code and issue tracker: [url=https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk]GitHub[/url]
 [*]This mod was made with the help of AI (Claude Code), under my direction.
+[*]New mod, not everything is tested yet. If something looks off, leave a comment here or open an issue on GitHub. Even a one-liner about what you were doing helps.
 [/list]
 ```
 

@@ -19,6 +19,10 @@ raise only the loot, cap anything that has run ahead of you, or leave any of the
 enemy and item settings are independent, so you can keep vanilla enemy scaling and still get the
 gear they drop on your level.
 
+This is a new mod and I haven't been able to test everything, so if something looks off, leave a
+comment or [open an issue](https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk/issues).
+Even a one-liner about what you were doing helps.
+
 ## Options
 
 The four level bounds take `Vanilla`, `Player Level`, or `Within 1` to `Within 10 Levels`:

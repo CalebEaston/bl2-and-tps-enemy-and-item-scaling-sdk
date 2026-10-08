@@ -30,8 +30,14 @@ src/enemy_item_scaling/   the mod: __init__.py, pyproject.toml (mod metadata), R
 src/                      is the "mods folder" the game is pointed at; keep it to mod packages only
 .willow2-mod-manager/     git submodule, pinned to the v3.8 release commit (9097107) for type-checking
 docs/sdk-notes.md         reference: SDK facts, hook targets, prior art, open questions
+docs/testing.md           in-game test plan: console probes and scenarios with expected log output
+docs/development.md       human-facing dev notes: layout, checks, running from checkout, releases
+.github/workflows/        release.yml: a v* tag builds the .sdkmod and publishes a GitHub Release
 pyproject.toml            pyright + ruff config only (copied from the bl-sdk repos)
 ```
+
+The README is the player-facing page (download link first, install guide, no internals); keep
+developer material out of it and in `docs/`.
 
 The folder name `enemy_item_scaling` is the Python module name, the settings file name
 (`<game>/sdk_mods/settings/enemy_item_scaling.json`) and the required root folder of the `.sdkmod`.

@@ -2,6 +2,10 @@
 
 A Borderlands 2 SDK mod that scales enemies and loot to your level.
 
+**[Download the latest release](https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk/releases/latest)**,
+drop `enemy_item_scaling.sdkmod` into your `sdk_mods` folder, restart the game. First time using SDK
+mods? See [Installation](#installation).
+
 Go back to Knuckle Dragger at level 15 and he's level 15, and so is his loot. Each bound is its own
 option, so scale what you want and leave the rest vanilla.
 
@@ -90,18 +94,10 @@ which is the place to look if anything here is out of date.
   spawn.
 - **More help:** the SDK's [Modding Support Discord](https://discord.gg/bXeqV8Ef9R).
 
-## Building from source
+## For modders
 
-A `.sdkmod` is just a zip whose only top-level folder is the mod folder:
-
-```sh
-cd src
-zip -r ../enemy_item_scaling.sdkmod enemy_item_scaling -x '*__pycache__*'
-```
-
-Or skip packaging and copy `src/enemy_item_scaling` into `sdk_mods` directly. Development notes
-(type-checking against the SDK, pointing the game at this checkout, hot-reloading) are in
-[CLAUDE.md](CLAUDE.md) and [docs/sdk-notes.md](docs/sdk-notes.md).
+The mod's source is `src/enemy_item_scaling/`. Notes on the SDK, the hooks used, prior art and
+the dev loop are in [docs/](docs/), starting with [docs/development.md](docs/development.md).
 
 ## Changelog
 

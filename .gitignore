@@ -17,3 +17,6 @@ settings/
 .vscode/
 .idea/
 .nvim.lua
+
+# Tool caches
+.ruff_cache/

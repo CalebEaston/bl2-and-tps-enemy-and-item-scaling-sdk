@@ -12,7 +12,7 @@ mods? See [Installation](#installation).
 Outside of UVHM, Borderlands 2 gives every area a fixed level range. Once you've out-levelled an
 area, everything in it is stuck behind you: the enemies die in a shot or two and nothing they drop
 is worth picking up. This mod puts a band around your level and keeps enemies and loot inside it.
-Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the gun he drops.
+Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the loot he drops.
 
 Each side of the band is its own option. You can raise only the enemies that fall behind you,
 raise only the loot, cap anything that has run ahead of you, or leave any of them vanilla. The

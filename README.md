@@ -1,51 +1,24 @@
 # Enemy and Item Scaling
 
-A Borderlands 2 PythonSDK mod that keeps enemies and loot within a band around your level, so the
-areas you come back to stay worth fighting through and the gear that drops there stays worth
-picking up.
+A Borderlands 2 SDK mod that scales enemies and loot to your level.
 
-Beat Knuckle Dragger at level 3, come back at level 15, and he spawns at 15 and drops level 15
-loot. Each bound is its own setting, so you can raise only the enemies that fall behind, raise only
-the loot, cap anything that runs ahead of you, or leave any of them vanilla. If you like vanilla
-enemy scaling but are tired of farming for on-level gear, set only the item floor.
+Go back to Knuckle Dragger at level 15 and he's level 15, and so is his loot. Each bound is its own
+option, so scale what you want and leave the rest vanilla.
 
-Only the host's settings matter in co-op: levels are decided on the host, so clients don't need the
-mod installed.
+## Options
 
-## Configuration
+All four take `Vanilla`, `Player Level`, or `Within 1` to `Within 10 Levels`:
 
-Every option is a spinner with the same choices: `Vanilla`, `Player Level`, `Within 1 Level` up to
-`Within 10 Levels`. "Player" means your character level plus any Overpower level you have selected.
+- **Minimum Enemy Level** - enemies below this are raised to it
+- **Maximum Enemy Level** - enemies above this are lowered to it
+- **Minimum Item Level** - loot below this is raised to it
+- **Maximum Item Level** - loot above this is lowered to it
+- **Log Adjustments** - prints each change to the console
 
-| Option | Vanilla | Player Level | Within N Levels |
-|---|---|---|---|
-| **Minimum Enemy Level** | no floor | enemies below you are raised to your level | raised to at least `player - N` |
-| **Maximum Enemy Level** | no cap | enemies above you are lowered to your level | lowered to at most `player + N` |
-| **Minimum Item Level** | no floor | loot below you is raised to your level | raised to at least `player - N` |
-| **Maximum Item Level** | no cap | loot above you is lowered to your level | lowered to at most `player + N` |
-| **Log Adjustments** | | | prints every level change to the console, for testing |
+Everything starts on `Vanilla`. Enemy and item settings don't affect each other. In co-op only the
+host's settings matter.
 
-Everything defaults to `Vanilla`, so the mod does nothing until you pick a bound.
-
-Some combinations:
-
-- **Everything matches me:** Minimum Enemy Level and Minimum Item Level to `Player Level`.
-- **Vanilla enemies, on-level loot:** only Minimum Item Level to `Player Level`.
-- **Pinned to a band:** all four to `Within 3 Levels`, and nothing spawns outside `player ± 3`.
-
-Enemy and item bounds are independent. Raising an enemy doesn't by itself raise its loot and vice
-versa, so set both if you want both.
-
-## How it works
-
-The mod hooks the game functions that assign a level to each enemy, to the loot an enemy will drop,
-and to chests and other containers, at the moment they spawn. It reads the level the game chose,
-and only when that level falls outside your band does it replace the call with the clamped level.
-Inside the band, the game runs untouched. Nothing is written to game data or save files, so
-disabling the mod restores vanilla behaviour immediately.
-
-Things it does not cover yet: vending machine stock, mission rewards, and enemies that are already
-alive when you level up (they keep their level until they respawn).
+Not covered yet: vendors, mission rewards, and enemies already alive when you level up.
 
 ## Installation
 

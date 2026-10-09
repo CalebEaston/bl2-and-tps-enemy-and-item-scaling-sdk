@@ -52,14 +52,15 @@ docs/testing-probes.md    developer version: console probes and detailed scenari
 docs/development.md       human-facing dev notes: layout, checks, running from checkout, releases
 .github/workflows/        release.yml: a v* tag builds the .sdkmod and publishes a GitHub Release
 pyproject.toml            pyright + ruff config only (copied from the bl-sdk repos)
+.ignored/                 gitignored, local only: the Nexus page text (nexus.md) and other drafts
 ```
 
 The README is the player-facing page (download link first, install guide, no internals); keep
 developer material out of it and in `docs/`. Its first line is the AI disclosure, worded exactly
 "This mod was made with AI (Claude Code). The code and docs were written with it, under my
 direction." (Caleb's wording; not "with the help of AI"). Its Credits section lists the mods
-whose findings this one builds on; add to it (and to `docs/nexus.md`) when a new source shapes
-the code.
+whose findings this one builds on; add to it (and to the Nexus text in `.ignored/nexus.md`) when a
+new source shapes the code.
 
 The folder name `enemy_item_scaling` is the Python module name, the settings file name
 (`<game>/sdk_mods/settings/enemy_item_scaling.json`) and the required root folder of the `.sdkmod`.
@@ -196,8 +197,10 @@ or container they come from, so the hooks above cover them. See `docs/sdk-notes.
   native and may not reach the game's own callers); base-game vendor stock keeps
   its vanilla `-2..0` level variance (`GD_Economy.VendingMachine.Init_VendingMachine_LootGamestageVariance`,
   a global object other mods edit too); the item of the day is exactly the machine's stage.
-- Nexus Mods listing: Nexus can't be automated, so `docs/nexus.md` holds the summary, BBCode
-  description, requirements, install steps and category for the user to paste.
+- Nexus Mods listing: Nexus can't be automated, so `.ignored/nexus.md` holds the summary, BBCode
+  description, requirements, install steps and category for the user to paste. `.ignored/` is
+  gitignored: Caleb keeps the Nexus text out of the public repo, so it lives only in this
+  checkout (it was in `docs/` until 2026-10-09 and is still in git history).
 - Willow2 mod database: listed via https://github.com/bl-sdk/bl-sdk.github.io/pull/261 (entry
   `_willow2_mods/EnemyItemScaling.md`, fork `CalebEaston/bl-sdk.github.io`). The page is built
   from `pyproject.toml`, so `tool.sdkmod.download` must stay the direct

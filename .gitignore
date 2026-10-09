@@ -20,3 +20,6 @@ settings/
 
 # Tool caches
 .ruff_cache/
+
+# Local-only notes and drafts (e.g. the Nexus page text), never published
+.ignored/

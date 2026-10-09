@@ -562,7 +562,7 @@ Caleb asked whether other mods were used and who to credit. A six-agent audit co
 source below against `src/enemy_item_scaling/__init__.py` line by line: no code was copied or
 closely adapted; what was taken is hook target names, game facts and the SDK's documented
 re-call-and-Block idiom, none of which carries a licence obligation. Player-facing credits are in
-the README's Credits section and `docs/nexus.md`; this is the full list.
+the README's Credits section and the Nexus page text; this is the full list.
 
 | Source | Author | Licence | What it gave this mod |
 |---|---|---|---|

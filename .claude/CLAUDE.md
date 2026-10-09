@@ -189,6 +189,11 @@ or container they come from, so the hooks above cover them. See `docs/sdk-notes.
   a global object other mods edit too); the item of the day is exactly the machine's stage.
 - Nexus Mods listing: Nexus can't be automated, so `docs/nexus.md` holds the summary, BBCode
   description, requirements, install steps and category for the user to paste.
+- Willow2 mod database: listed via https://github.com/bl-sdk/bl-sdk.github.io/pull/261 (entry
+  `_willow2_mods/EnemyItemScaling.md`, fork `CalebEaston/bl-sdk.github.io`). The page is built
+  from `pyproject.toml`, so `tool.sdkmod.download` must stay the direct
+  `releases/latest/download/enemy_item_scaling.sdkmod` link and `tool.sdkmod` may only hold the
+  keys the database schema allows (see `docs/sdk-notes.md`, mod database section).
 - Out of scope by decision (2026-10-08): re-levelling enemies that are already alive when the
   player levels up. They keep their spawn level until they respawn.
 - Local unit tests for `clamp_level` (needs a conftest that stubs `mods_base`/`unrealsdk`).

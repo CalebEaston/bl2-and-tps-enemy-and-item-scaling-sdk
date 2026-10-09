@@ -531,3 +531,27 @@ Design:
   then asked for the GitHub repository to follow: it is now
   `CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk` (GitHub redirects the old name; every
   URL in the docs and `pyproject.toml` was rewritten; the v0.6/v0.7 release pages moved with it).
+
+## Willow2 mod database listing (2026-10-09)
+
+Submitted as https://github.com/bl-sdk/bl-sdk.github.io/pull/261 from the fork
+`CalebEaston/bl-sdk.github.io`, branch `add-enemy-item-scaling`, file
+`_willow2_mods/EnemyItemScaling.md` (front matter only: `pyproject_url` pointing at the raw
+`src/enemy_item_scaling/pyproject.toml` on `main`, `mod_categories: enemy loot gameplay`). The
+site builds the page from the pyproject: title from `tool.sdkmod.name`, description from
+`project.description`, links from `project.urls`, download from `tool.sdkmod.download`.
+
+What the database's validators (`_validate_pyproject.py`, `_validate_categories.py`, run in CI
+on every PR) require, and therefore what must stay true in `pyproject.toml`:
+- `tool.sdkmod.download` must be a DIRECT `.sdkmod`/`.zip` link whose file name matches the
+  single root folder inside: `releases/latest/download/enemy_item_scaling.sdkmod` (a releases
+  page URL fails). GitHub keeps that URL pointing at the newest release, so no PR is needed per
+  version; the site re-reads the pyproject on each build.
+- `tool.sdkmod` may only contain name, version, mod_type, supported_games, coop_support,
+  license {name, url}, download, auto_enable, uses_native_modules. No license is declared (the
+  repo has no LICENSE file); add one to both if Caleb picks a licence.
+- `pyproject_url` must be `raw.githubusercontent.com` (CORS), never `github.com/.../raw/`.
+- Categories come from `_data/categories.yml` (enemy, loot, gameplay, gear, utility, ...).
+Both validators passed locally before the PR (`<scratch venv>/bin/python _validate_pyproject.py
+front_matter _willow2_mods/EnemyItemScaling.md`). `_data/reviews.yml` lists manually reviewed
+mods; ours is unreviewed until a bl-sdk reviewer looks at it.

@@ -22,8 +22,8 @@
   no longer reads the Overpower field that only Borderlands 2 has. Every hook target was checked
   against The Pre-Sequel's classes; the SHiFT machine in Concordia counts as a vending machine.
   Not yet play-tested there, so reports from The Pre-Sequel are especially welcome.
-- Chests in the intro areas (Mercenary Day's `Xmas_P` and The Pre-Sequel's intro) are no longer
-  lowered by `Maximum Item Level`: at least one of them spawns nothing when lowered.
+- Chests in Mercenary Day's map (`Xmas_P`) and The Pre-Sequel's intro (`MoonShotIntro_P`) are no
+  longer lowered by `Maximum Item Level`: at least one of them spawns nothing when lowered.
 
 ### Enemy and Item Scaling v0.5
 - Fixed enemies keeping their old level (nameplate and health) while only their drops were

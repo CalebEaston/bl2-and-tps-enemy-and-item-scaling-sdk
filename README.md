@@ -93,8 +93,9 @@ which is the place to look if anything here is out of date.
 ### 2. Install this mod
 
 1. Get `enemy_item_scaling.sdkmod` from this repository's
-   [Releases](https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk/releases) page. If
-   there is no release yet, see "Building from source" below.
+   [Releases](https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk/releases) page. To
+   build it yourself instead, see
+   [Building the .sdkmod by hand](docs/development.md#building-the-sdkmod-by-hand).
 2. Drop the `.sdkmod` file straight into `<game>\sdk_mods`. (If you instead have the folder
    `enemy_item_scaling`, put that folder in `sdk_mods` so that
    `sdk_mods\enemy_item_scaling\__init__.py` exists; avoid ending up with the folder nested inside
@@ -143,20 +144,23 @@ No code from other mods is included, but this one builds on what they figured ou
 
 - [apple1417](https://github.com/apple1417) and the bl-sdk contributors, for the
   [PythonSDK](https://github.com/bl-sdk/willow2-mod-manager) this runs on, and apple1417's
-  [Enemy Level Randomizer](https://github.com/apple1417/willow2-sdk-mods/tree/master/enemy_level_randomizer).
+  [Enemy Level Randomizer](https://github.com/apple1417/willow2-sdk-mods/tree/master/enemy_level_randomizer),
+  [Borderlands Cheats](https://github.com/apple1417/willow2-sdk-mods/tree/master/apples_borderlands_cheats) and
+  [Vendor Edit](https://github.com/apple1417/willow2-sdk-mods/tree/master/vendor_edit).
 - galqawala's [EnemyBalancer](https://github.com/galqawala/EnemyBalancer), whose spawn hooks set
   enemy levels, a technique from RedxYeti's
   [Enemy Randomizer](https://github.com/RedxYeti/Yeti-BL1-SDK-Mods/tree/main/EnemyRandomizer).
 - EdricY's [Bouncy Loot God](https://github.com/EdricY/Bouncy-Loot-God) for the loot and chest
-  hooks, and [Adaptor-Face](https://github.com/Adaptor-Face) for finding the intro chests that
-  break when lowered.
+  hooks, and [Adaptor-Face](https://github.com/Adaptor-Face) for finding the Pre-Sequel intro
+  chest that spawns empty when lowered.
 - mopioid's [Loot Randomizer](https://github.com/mopioid/Borderlands-Loot-Randomizer), juso40's
   [MapLoader and RogueLands](https://github.com/juso40/bl2sdk_Mods), and RedxYeti's
   [Pay To Loot, Random Skill Selector](https://github.com/RedxYeti/bl2-willow2-sdkmods) and
   [Ultimate Scavenger](https://github.com/RedxYeti/Yeti-BL2-SDK-Mods/tree/main/UltimateScavengerMod),
   for how missions, rewards and level-ups work.
-- ZooLSmith's [Helios Tracker](https://github.com/ZooLSmith/helios-tracker) and zuhuHix's
-  [BL2_ReBased](https://github.com/zuhuHix/BL2_ReBased) research notes.
+- The research notes in ZooLSmith's [Helios Tracker](https://github.com/ZooLSmith/helios-tracker)
+  and in [BL2_ReBased](https://github.com/zuhuHix/BL2_ReBased), by zuhuHix and the OpenWillow
+  contributors.
 - Works alongside ZetaDaemon's
   [Reward Reroller](https://github.com/ZetaDaemon/bl-sdk-mods/tree/main/RewardReroller).
 

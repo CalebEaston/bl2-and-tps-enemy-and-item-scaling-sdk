@@ -74,8 +74,9 @@ Settings: `On-Level Vendors` on, all five bounds `Vanilla`. A high character in 
   minutes after the map loaded): the stock is at your new level and the log has a
   `vendor restock WillowVendingMachine_N: 15 -> 16` line. If you did not level up there is no
   line and nothing to check, so skip this rather than wait.
-- Turn `On-Level Vendors` off and set `Minimum Item Level = Player Level`: the vendor is back at
-  the area's level and there is no `vendor` or `container` line for it.
+- Turn `On-Level Vendors` off, set `Minimum Item Level = Player Level`, then save-quit and
+  continue (the machine keeps its level until the map reloads): the vendor is back at the
+  area's level and there is no `vendor` or `container` line for it.
 - If there is no `vendor` line at map load but the stock is right anyway: say so.
 
 ## 7. Missions

@@ -89,7 +89,7 @@ Same map. `Minimum Enemy Level = Vanilla`, `Minimum Item Level = Player Level`.
 ## 3. Ceiling
 
 Fresh character around level 5. `Maximum Enemy Level = Player Level`. Go to Three Horns Divide
-(vanilla 8-11). Expect `enemy ... : 9 -> 5` lines and level-5 nameplates.
+(vanilla 8-11). Expect `spawn PawnBalance_...: 9 -> 5` lines and level-5 nameplates.
 
 ## 4. Vanilla
 
@@ -108,8 +108,9 @@ Search `<game>/Binaries/Win32/Plugins/unrealsdk.log` for `Traceback`, `NoneType`
 
 - Whether `WillowGame.WillowVehicle:SetGameStage` is a separate function (enemy-driven vehicles
   would then keep their vanilla level until a hook is added for it).
-- Whether vending machines go through `WillowInteractiveObject:SetGameStage` (they are
-  interactive objects); if they do, the item band already affects their stock.
+- Whether vending machines go through `WillowInteractiveObject:SetGameStage` when they spawn
+  (if not, `On-Level Vendors` only takes effect at the first restock; the item band never
+  touches them).
 - Whether down-levelling chests in Mercenary Day (`Xmas_P`) breaks them, as Bouncy-Loot-God's
   exclusion suggests.
 

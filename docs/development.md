@@ -7,7 +7,7 @@ Notes for anyone who wants to build on this mod. Players don't need any of this:
 
 ```
 src/enemy_item_scaling/   the mod itself: __init__.py, pyproject.toml (mod metadata), Readme.md (changelog)
-.willow2-mod-manager/     git submodule pinned to the SDK release the game ships, used for type-checking only
+.willow2-mod-manager/     git submodule pinned to the v3.8 SDK release players install, used for type-checking only
 docs/                     these notes, the SDK reference (sdk-notes.md), the plain playtest checklist (testing.md)
                           and the console probes / detailed scenarios (testing-probes.md)
 pyproject.toml            ruff and pyright configuration, copied from the bl-sdk repos
@@ -55,7 +55,7 @@ cd src && zip -r ../enemy_item_scaling.sdkmod enemy_item_scaling -x '*__pycache_
 
 1. Bump `version` in `src/enemy_item_scaling/pyproject.toml` (dotted integers only, e.g. `0.2`) and
    add an entry to `src/enemy_item_scaling/Readme.md`.
-2. Commit, then `git tag v0.2 && git push origin v0.2`.
+2. Commit, then `git tag v<version> && git push origin v<version>`.
 
 The workflow in `.github/workflows/release.yml` checks that the tag matches the version, builds
 the `.sdkmod` and publishes a GitHub Release with it attached and auto-generated notes.

@@ -2,13 +2,15 @@
 
 Nexus can't be filled in automatically, so this is everything to paste into
 https://www.nexusmods.com/borderlands2/mods/add . Attach `enemy_item_scaling.sdkmod` from the
-GitHub release as the main file.
+GitHub release as the main file. For a Pre-Sequel listing the same text goes on The
+Pre-Sequel's own Nexus page, https://www.nexusmods.com/borderlandsthepresequel/mods/add .
 
 ## Fields
 
-- **Name:** Enemy and Item Scaling
-- **Summary (one line):** Scales enemies, loot, vendors and mission rewards to your level, each
-  one optional. Come back to an old area at level 15 and it's a level 15 area.
+- **Name:** Enemy and Item Scaling (BL2 & TPS)
+- **Summary (one line):** Scales enemies, loot, vendors and missions to your level in BL2 and
+  TPS (TPS untested), each one optional. Come back to an old area at level 15 and it's a level
+  15 area.
 - **Category:** Gameplay (Nexus calls it "Gameplay Effects and Changes" on some games)
 - **Version:** match the release tag, e.g. `0.2`
 - **Language:** English
@@ -17,40 +19,40 @@ GitHub release as the main file.
 - **Permissions:** your call. The source is public on GitHub, so "open source, credit
   appreciated" fits.
 - **Tags:** Gameplay, Loot, Levelling, Quality of Life
-- **Source:** https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk
+- **Source:** https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk
 
 ## Description (BBCode)
 
 Nexus descriptions are BBCode. Paste this as-is:
 
 ```
-[size=5][b]Enemy and Item Scaling[/b][/size]
+[size=5][b]Enemy and Item Scaling (BL2 & TPS)[/b][/size]
 
-A PythonSDK mod for Borderlands 2 and Borderlands: The Pre-Sequel that scales enemies and loot to your level.
+A PythonSDK mod for Borderlands 2 and Borderlands: The Pre-Sequel that scales enemies, loot and missions to your level. The Pre-Sequel side should work (both games share the code the mod hooks into) but hasn't been tested yet.
 
-Outside of UVHM, both games give every area a fixed level range. Once you've out-levelled an area, everything in it is stuck behind you: the enemies die in a shot or two and nothing they drop is worth picking up. This mod puts a band around your level and keeps enemies and loot inside it. Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the loot he drops.
+Outside of UVHM, both games give every area a fixed level range. Once you've out-levelled an area, everything in it is stuck behind you: the enemies die in a shot or two and nothing they drop is worth picking up. This mod puts a band around your level and keeps enemies, loot and the missions you have accepted inside it. Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the loot he drops.
 
-Each side of the band is its own option. You can raise only the enemies that fall behind you, raise only the loot, cap anything that has run ahead of you, or leave any of them vanilla. The enemy and item settings are independent, so you can keep vanilla enemy scaling and still get the gear they drop on your level.
+Each side of the band is its own option. You can raise only the enemies that fall behind you, raise only the loot or only your missions, cap anything that has run ahead of you, or leave any of them vanilla. The enemy and item settings are independent, so you can keep vanilla enemy scaling and still get the gear they drop on your level.
 
 [size=4][b]Options[/b][/size]
 
-The four level bounds take [b]Vanilla[/b], [b]Player Level[/b], or [b]Within 1[/b] to [b]Within 10 Levels[/b]:
+The five level bounds take [b]Vanilla[/b], [b]Player Level[/b], or [b]Within 1[/b] to [b]Within 10 Levels[/b]:
 
 [list]
 [*][b]Minimum Enemy Level[/b] - enemies below this are raised to it
 [*][b]Maximum Enemy Level[/b] - enemies above this are lowered to it
 [*][b]Minimum Item Level[/b] - loot below this is raised to it (enemy drops, chests, slot machines, boss drops)
 [*][b]Maximum Item Level[/b] - loot above this is lowered to it
+[*][b]Minimum Mission Level[/b] - missions you have accepted that fall below this are raised to it and keep following you as you level up (never lowered), so the reward item, XP and cash come at that level when you turn them in
 [/list]
 
-Two on/off switches:
+One on/off switch:
 
 [list]
-[*][b]On-Level Mission Rewards[/b] - missions you have accepted are raised to your level (never lowered) and follow you as you level up, so the reward item, XP and cash come at your level when you turn them in
 [*][b]On-Level Vendors[/b] - vending machines stock at your level, item of the day included
 [/list]
 
-Everything starts off or on Vanilla, so the mod does nothing until you pick something. In co-op only the host's settings matter. Enemies already alive when you level up keep their level until they respawn. A mission that was raised to your level is saved with your character and keeps that level even if you turn the option off.
+Everything starts off or on Vanilla, so the mod does nothing until you pick something. In co-op only the host's settings matter. Enemies already alive when you level up keep their level until they respawn. A mission that was raised is saved with your character and keeps that level even if you set the bound back to Vanilla.
 
 [size=4][b]Installation[/b][/size]
 
@@ -62,12 +64,12 @@ This is an SDK mod, not a BLCMM text mod. If you've never used one:
 [*]Restart the game, open [b]MODS[/b], enable Enemy and Item Scaling, and set the options you want.
 [/list]
 
-A step-by-step version with troubleshooting is in the [url=https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk#installation]README on GitHub[/url].
+A step-by-step version with troubleshooting is in the [url=https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk#installation]README on GitHub[/url].
 
 [size=4][b]Notes[/b][/size]
 
 [list]
-[*]Source code and issue tracker: [url=https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk]GitHub[/url]
+[*]Source code and issue tracker: [url=https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk]GitHub[/url]
 [*]This mod was made with the help of AI (Claude Code), under my direction.
 [*]New mod, not everything is tested yet. If something looks off, leave a comment here or open an issue on GitHub. Even a one-liner about what you were doing helps. Pre-Sequel support is new in v0.6 and hasn't been play-tested yet, so reports from there are especially welcome.
 [/list]

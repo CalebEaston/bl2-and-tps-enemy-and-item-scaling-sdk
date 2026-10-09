@@ -7,7 +7,7 @@ is NOT what this targets. TPS support is declared since v0.6 (2026-10-09) and is
 
 ## What the mod does
 
-Four spinner options, each `Vanilla` | `Player Level` | `Within 1 Level` ... `Within 10 Levels`:
+Five spinner options, each `Vanilla` | `Player Level` | `Within 1 Level` ... `Within 10 Levels`:
 
 | Option | Vanilla | Within N |
 |---|---|---|
@@ -15,18 +15,19 @@ Four spinner options, each `Vanilla` | `Player Level` | `Within 1 Level` ... `Wi
 | Maximum Enemy Level | no cap | enemy level lowered to at most `player + N` |
 | Minimum Item Level | no floor | item level raised to at least `player - N` |
 | Maximum Item Level | no cap | item level lowered to at most `player + N` |
+| Minimum Mission Level | no floor | an accepted mission's level raised to at least `player - N`, never lowered, written into the save (v0.8; was the `On-Level Mission Rewards` bool in v0.2-v0.7) |
 
 `player` = `PlayerReplicationInfo.ExpLevel`, plus `OverpowerChoiceValue` in BL2 UVHM only (TPS has
 no OP levels and no such field; `has_overpower_levels()` looks the field up on the class once and
 guards the read). Item bounds
 work without enemy bounds (vanilla enemies, on-level loot); a clamped enemy drops loot at its
-clamped level with the item band applied on top. Two `BoolOption`s (v2): `On-Level Mission
-Rewards` (v0.7: every accepted mission is raised to the player's level, never lowered, for good:
-the definition's `GameStage` + `bGameStageLocked` and the player's
-`MissionStatusPlayerData.GameStage` record, which the save file stores; written on accept, on
-each level-up, on map load and again at the NPC list / reward card / turn-in / grant backstops;
-nothing is restored; the reward item is only checked as it is taken, and a roll below the stage
-the mission had at the roll logs a "please report this" line) and
+clamped level with the item band applied on top. The mission bound (v0.7 semantics, v0.8 name):
+every accepted mission below the floor is raised to it, never lowered, for good: the definition's
+`GameStage` + `bGameStageLocked` and the player's `MissionStatusPlayerData.GameStage` record,
+which the save file stores; written on accept, on each level-up, on map load and again at the
+NPC list / reward card / turn-in / grant backstops; nothing is restored; the reward item is only
+checked as it is taken, and a roll below the stage the mission had at the roll logs a "please
+report this" line. One `BoolOption`:
 `On-Level Vendors` (vending machines are set to the player's level when they spawn and before
 they restock; vendors are excluded from the item band; in TPS the Concordia SHiFT machine,
 `WillowVendingMachineShift`, a plain `WillowInteractiveObject`, counts as a vendor too).
@@ -45,7 +46,9 @@ src/enemy_item_scaling/   the mod: __init__.py, pyproject.toml (mod metadata), R
 src/                      is the "mods folder" the game is pointed at; keep it to mod packages only
 .willow2-mod-manager/     git submodule, pinned to the v3.8 release commit (9097107) for type-checking
 docs/sdk-notes.md         reference: SDK facts, hook targets, prior art, open questions
-docs/testing.md           in-game test plan: console probes and scenarios with expected log output
+docs/testing.md           playtest checklist for Caleb: plain in-game steps and log lines, nothing typed into
+                          the console (he can't paste into it)
+docs/testing-probes.md    developer version: console probes and detailed scenarios with expected log output
 docs/development.md       human-facing dev notes: layout, checks, running from checkout, releases
 .github/workflows/        release.yml: a v* tag builds the .sdkmod and publishes a GitHub Release
 pyproject.toml            pyright + ruff config only (copied from the bl-sdk repos)
@@ -83,6 +86,10 @@ go at the repo root, not under `src/`.
 - Python file content stays ASCII (ruff RUF001/RUF003 flag en dashes and curly quotes). No `TODO`
   comments in code (ruff TD/FIX rules); put open items in `docs/sdk-notes.md`.
 - Use `unrealsdk.logging.info/warning/error`, never `print`. `dev_warning` is hidden in-game.
+- Option names: the existing `Minimum/Maximum <Thing> Level` style, plain words that read
+  naturally (Caleb's ask), and short: the mod menu truncates long labels (EnemyBalancer measured
+  26 characters already dropping the last word), so stay at or under 25. Renaming an option
+  orphans its saved value in `settings/enemy_item_scaling.json`; say so in the changelog.
 - Both games: `[tool.sdkmod] supported_games` must list `"BL2"` and `"TPS"`, or `mods_base` shows
   the mod as `Incompatible` and locks the enable toggle in the missing game. Every hook target
   and field used here exists in both games with the same parameter names (checked against the
@@ -116,7 +123,7 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
    copying is needed (Windows path as seen by Wine; `Z:` is the default mapping of `/`):
    ```toml
    [mod_manager]
-   extra_folders = ['Z:\home\caleb\Development\caleb\bl2-enemy-and-item-scaling-sdk\src']
+   extra_folders = ['Z:\home\caleb\Development\caleb\bl2-and-tps-enemy-and-item-scaling-sdk\src']
    ```
    Alternatively copy `src/enemy_item_scaling/` into `<game>/sdk_mods/`.
 3. Steam launch options for Proton: `WINEDLLOVERRIDES="ddraw=n,b" %command% -pf_tricks=vcrun2022`
@@ -137,7 +144,7 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 | `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band; never lowered when the object path starts with `Xmas_P.` or `MoonShotIntro_P.`, where Bouncy Loot God found a chest that spawns nothing when down-levelled); vending machines (vendor toggle) |
 | `WillowGame.WillowVendingMachine:ResetInventory` and `WillowGame.WillowVendingMachineShift:ResetInventory` (TPS only; never fires in BL2) | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
 | `WillowGame.WillowPlayerController:AcceptMission` (POST, status in {1,2,3} via `GetPlayersMissionStatus`), `:UpdateMissionStatus` (POST_UNCONDITIONAL, `NewMissionStatus` in {1,2,3}) and `:ClientReceiveMissionStatus` (POST, `MissionStatusData.Mission` / `.Status` in {1,2,3}) | `Mission`; same write | the moment a mission is accepted, by NPC or by script (ECHO, cutscene): the native `MissionTracker.ActivateMission` locks the stage, then calls `UpdateMissionStatus` and `ClientReceiveMissionStatus` per player, so a POST write wins; three idempotent hooks because which of them first sees the player's record is open (`docs/sdk-notes.md` v0.7) |
-| `WillowGame.WillowPlayerController:OnExpLevelChange` (POST, only when `bFeedback` or `bNaturalLevelup`) and `:WillowClientDisableLoadingMovie` (POST) | flags / none; iterate `obj.MissionPlaythroughs[obj.GetCurrentPlaythrough()].MissionList` (`Status`, `MissionDef`, `GameStage`) | every accepted mission after a level-up (`ExpLevelUp` increments `ExpLevel` then calls this; the flags skip the call the game makes at character load, when the PRI may still be stale) and after a map load (missions accepted before the option was on, levels gained elsewhere; also clears `_rolled_stages`) |
+| `WillowGame.WillowPlayerController:OnExpLevelChange` (POST, only when `bFeedback` or `bNaturalLevelup`) and `:WillowClientDisableLoadingMovie` (POST) | flags / none; iterate `obj.MissionPlaythroughs[obj.GetCurrentPlaythrough()].MissionList` (`Status`, `MissionDef`, `GameStage`) | every accepted mission after a level-up (`ExpLevelUp` increments `ExpLevel` then calls this; the flags skip the call the game makes at character load, when the PRI may still be stale) and after a map load (missions accepted before the bound was set, levels gained elsewhere; also clears `_rolled_stages`) |
 | `WillowGame.QuestAcceptGFxMovie:UpdateMissionList` / `:DetermineQuestEntries` / `:extPopulateQuestEntries` (POST) | iterate `obj.MissionList[]` (`MissionDef`, `MissionStatus`), player `obj.WPCOwner` | backstop (the v0.4 primary): every accepted mission when an NPC's list is built; normally a no-op since v0.7, kept because it runs before any turn-in whichever order other mods' hooks run in |
 | `WillowGame.QuestAcceptGFxMovie:SetRewardCard` (PRE) | `MissionDef`, `WPC`; same write if status in {1,2,3} | backstop when a reward card shows (still before Reward Reroller's turn-in hook) |
 | `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; `obj.MissionList[obj.GetSelectedIndex()]` after a bounds and status check, player `obj.WPCOwner` | backstop at the turn-in confirm; only beats the reroller's hook if ours registered first |
@@ -194,4 +201,5 @@ or container they come from, so the hooks above cover them. See `docs/sdk-notes.
   interactive objects the item band would log as `container` if the game ever sets their stage),
   and TPS's `MissionDefinition.LevelAdjustment` / `GetMissionLevel(pc, bIncludeLevelAdjustment)`
   (BL2 has neither; the mod writes `GameStage` only): same "wait for a report" status as BL2
-  vehicles, with the checks listed in `docs/testing.md` section 9.
+  vehicles, with the checks listed in `docs/testing-probes.md` section 9 (plain version: `docs/testing.md`
+  section 8).

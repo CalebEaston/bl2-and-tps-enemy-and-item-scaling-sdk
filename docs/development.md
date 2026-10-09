@@ -8,7 +8,8 @@ Notes for anyone who wants to build on this mod. Players don't need any of this:
 ```
 src/enemy_item_scaling/   the mod itself: __init__.py, pyproject.toml (mod metadata), Readme.md (changelog)
 .willow2-mod-manager/     git submodule pinned to the SDK release the game ships, used for type-checking only
-docs/                     these notes, the SDK reference (sdk-notes.md) and the in-game test plan (testing.md)
+docs/                     these notes, the SDK reference (sdk-notes.md), the plain playtest checklist (testing.md)
+                          and the console probes / detailed scenarios (testing-probes.md)
 pyproject.toml            ruff and pyright configuration, copied from the bl-sdk repos
 .github/workflows/        the release workflow
 ```
@@ -35,12 +36,14 @@ Instead of re-zipping after every edit, point the game at `src/` as an extra mod
 
 ```toml
 [mod_manager]
-extra_folders = ['Z:\path\to\bl2-enemy-and-item-scaling-sdk\src']
+extra_folders = ['Z:\path\to\bl2-and-tps-enemy-and-item-scaling-sdk\src']
 ```
 
 (Windows path as the game sees it; under Proton `Z:` is `/`.) In the game console, tilde twice,
 `rlm enemy_item_scaling` reloads the module after an edit. Errors land in
-`<game>/Binaries/Win32/Plugins/unrealsdk.log`. The first-run checklist is in [testing.md](testing.md).
+`<game>/Binaries/Win32/Plugins/unrealsdk.log`. The first-run checklist, console probes first, is in
+[testing-probes.md](testing-probes.md); [testing.md](testing.md) is the same plan without anything
+typed into the console.
 
 ## Building the .sdkmod by hand
 

@@ -24,14 +24,25 @@ LEVEL_CHOICES: dict[str, int | None] = {
 }
 
 
+# Appended to every bound's description
+CHOICES_HELP = (
+    "'Player Level' is exactly your level. 'Within N Levels' is N levels below you for a\n"
+    "minimum and N levels above you for a maximum."
+)
+
+
 def _level_spinner(identifier: str, description: str) -> SpinnerOption:
-    return SpinnerOption(identifier, VANILLA, list(LEVEL_CHOICES), description=description)
+    return SpinnerOption(
+        identifier,
+        VANILLA,
+        list(LEVEL_CHOICES),
+        description=f"{description}\n{CHOICES_HELP}",
+    )
 
 
 min_enemy_level = _level_spinner(
     "Minimum Enemy Level",
-    "Enemies that would spawn below this are raised to it.\n"
-    "'Player Level' makes every under-levelled enemy match you exactly.",
+    "Enemies that would spawn below this are raised to it.",
 )
 max_enemy_level = _level_spinner(
     "Maximum Enemy Level",
@@ -46,14 +57,12 @@ max_item_level = _level_spinner(
     "Maximum Item Level",
     "Loot that would drop above this is lowered to it.",
 )
-on_level_mission_rewards = BoolOption(
-    "On-Level Mission Rewards",
-    False,
-    description=(
-        "Missions you have accepted are raised to your level and follow you as you level up,\n"
-        "so their reward item, XP and cash come at your level. Saved with your character:\n"
-        "a raised mission keeps its level if you turn this off."
-    ),
+min_mission_level = _level_spinner(
+    "Minimum Mission Level",
+    "Missions you have accepted that fall below this are raised to it and follow you as you"
+    " level up, so their reward item, XP and cash come at that level.\n"
+    "Saved with your character: a raised mission keeps its level if you set this back to"
+    " Vanilla.",
 )
 on_level_vendors = BoolOption(
     "On-Level Vendors",
@@ -66,7 +75,10 @@ on_level_vendors = BoolOption(
 log_adjustments = BoolOption(
     "Log Adjustments",
     False,
-    description="Print every level change to the console. Useful when testing.",
+    description=(
+        "Print every level change to the console and to Binaries/Win32/Plugins/unrealsdk.log.\n"
+        "Useful when testing."
+    ),
 )
 
 LOG_PREFIX = "[Enemy and Item Scaling]"
@@ -501,6 +513,11 @@ MISSION_ACCEPTED_STATUSES = frozenset({1, 2, 3})
 _rolled_stages: dict[str, int] = {}
 
 
+def _mission_floor_offset() -> int | None:
+    """How far below the player the mission floor sits, or None when the bound is off."""
+    return LEVEL_CHOICES.get(min_mission_level.value)
+
+
 def _player_mission_entry(pc: UObject, mission: UObject) -> WrappedStruct | None:
     """
     Finds a player's own record of a mission (status, progress and game stage).
@@ -527,13 +544,13 @@ def _player_mission_entry(pc: UObject, mission: UObject) -> WrappedStruct | None
 
 def _level_mission(mission: UObject, pc: UObject, entry: WrappedStruct | None = None) -> None:
     """
-    Raises a mission's level to a player's level, for good.
+    Raises a mission's level to the mission floor (the player's level minus the bound's offset).
 
     The level lives in two places: the definition's transient `GameStage` (what the mission
     log, the XP and cash, the reward roll and mods asking `mission.GetGameStage()` see) and the
     player's own record of the mission, which is what the save file stores and what the game
     puts back into the definition on load. Both are written, so from now on the mission simply
-    is at the player's level, as if it had been accepted at that level in UVHM.
+    is at that level, as if it had been accepted at that level in UVHM.
 
     Never lowered: reward pools have minimum levels, and a mission locked above the player (a
     DLC mission taken early) could end up with no reward at all if pulled below them.
@@ -543,16 +560,19 @@ def _level_mission(mission: UObject, pc: UObject, entry: WrappedStruct | None = 
         pc: The WillowPlayerController whose level to use.
         entry: The player's record of the mission, if the caller already has it.
     """
+    offset = _mission_floor_offset()
     player_level = player_level_for(pc)
-    if player_level is None:
+    if offset is None or player_level is None:
         return
+    floor = max(1, player_level - offset)
     if entry is None:
         entry = _player_mission_entry(pc, mission)
     current = int(mission.GameStage)
     locked = bool(mission.bGameStageLocked)
-    # An accepted mission is locked at a positive stage; anything else has no level of its own yet
-    wanted = max(current, player_level) if locked and current > 0 else player_level
     entry_stage = None if entry is None else int(entry.GameStage)
+    # Raise only, and never below what the player's own record says: the definition is rebuilt
+    # from that record on load.
+    wanted = max(current, entry_stage or 0, floor)
     if current == wanted and locked and entry_stage in (None, wanted):
         return
 
@@ -595,7 +615,7 @@ def on_mission_accepted(
     The game can refuse an acceptance (dependencies not met, for one), and this runs either
     way, so the mission's status is checked first.
     """
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     mission = args.Mission
     if mission is None:
@@ -619,7 +639,7 @@ def on_mission_status_received(
     status notification is the last thing the game sends each player about the change, so a
     write here can't be overwritten by the game's own stage bookkeeping.
     """
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     data = args.MissionStatusData
     if int(data.Status) not in MISSION_ACCEPTED_STATUSES:
@@ -642,7 +662,7 @@ def on_player_level_up(
     The game also calls this once while a character loads, with both flags off and possibly a
     stale level; that call is skipped and the map-load hook below does the work instead.
     """
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     if not (bool(args.bFeedback) or bool(args.bNaturalLevelup)):
         return
@@ -664,7 +684,7 @@ def on_map_loaded(
     the definition, so the level sticks and this has nothing to do.
     """
     _rolled_stages.clear()
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     _level_accepted_missions(obj)
 
@@ -685,7 +705,7 @@ def on_mission_list_updated(
     it runs before anything can be turned in, whichever order other mods' hooks run in, which
     is what makes mods that roll rewards themselves (Reward Reroller) see the level.
     """
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     pc = obj.WPCOwner
     if pc is None:
@@ -708,7 +728,7 @@ def on_reward_card(
     This is early enough for mods that roll the rewards themselves on the turn-in confirm,
     such as Reward Reroller, whose calls never go through the hooks below.
     """
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     mission = args.MissionDef
     pc = args.WPC
@@ -732,7 +752,7 @@ def on_complete_confirmed(
     Only beats another mod's hook on the same function if ours registered first (true when
     both were enabled at launch), so the mission-list hook above is the one to rely on.
     """
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     pc = obj.WPCOwner
     if pc is None:
@@ -761,7 +781,7 @@ def on_grant_mission_rewards(
     host once per player (untested in co-op), so the level comes from that player's controller.
     Remembers the level the roll is about to use, for the check below.
     """
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     mission = args.Mission
     if mission is None:
@@ -784,7 +804,7 @@ def on_mission_status_updated(
     this is where the player's record of it is first complete; the accept hook above then has
     nothing left to do.
     """
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     if int(args.NewMissionStatus) not in MISSION_ACCEPTED_STATUSES:
         return
@@ -810,7 +830,7 @@ def on_receive_reward(
     remembered roll (Reward Reroller's, or one left unclaimed in an earlier session) is not
     checked.
     """
-    if not on_level_mission_rewards.value:
+    if _mission_floor_offset() is None:
         return
     mission = args.Mission
     if mission is None:
@@ -832,7 +852,7 @@ mod = build_mod(
         max_enemy_level,
         min_item_level,
         max_item_level,
-        on_level_mission_rewards,
+        min_mission_level,
         on_level_vendors,
         log_adjustments,
     ],

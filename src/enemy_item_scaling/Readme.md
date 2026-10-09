@@ -1,5 +1,11 @@
 ## Changelog
 
+### Enemy and Item Scaling v0.8
+- `On-Level Mission Rewards` is now `Minimum Mission Level`, a bound like the other four
+  (`Vanilla`, `Player Level`, `Within 1` to `Within 10 Levels`): accepted missions below it are
+  raised to it. Set it again after updating; the old on/off setting is not carried over.
+- The mod now says where it runs: Borderlands 2 and The Pre-Sequel, the latter untested so far.
+
 ### Enemy and Item Scaling v0.7
 - `On-Level Mission Rewards` now raises the missions themselves instead of patching their
   rewards. An accepted mission is raised to your level (never lowered) when you accept it,

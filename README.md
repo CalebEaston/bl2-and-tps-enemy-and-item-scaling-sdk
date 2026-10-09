@@ -1,58 +1,61 @@
-# Enemy and Item Scaling
+# Enemy and Item Scaling (BL2 & TPS)
 
 > This mod was made with the help of AI (Claude Code). The code and docs were written with it,
 > under my direction.
 
-An SDK mod for Borderlands 2 and Borderlands: The Pre-Sequel that scales enemies and loot to
-your level.
+An SDK mod for Borderlands 2 and Borderlands: The Pre-Sequel that scales enemies, loot and
+missions to your level. The Pre-Sequel side should work (both games share the code the mod hooks
+into) but hasn't been tested yet.
 
-**[Download the latest release](https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk/releases/latest)**,
+**[Download the latest release](https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk/releases/latest)**,
 drop `enemy_item_scaling.sdkmod` into your `sdk_mods` folder, restart the game. First time using SDK
 mods? See [Installation](#installation).
 
 Outside of UVHM, both games give every area a fixed level range. Once you've out-levelled an
 area, everything in it is stuck behind you: the enemies die in a shot or two and nothing they drop
-is worth picking up. This mod puts a band around your level and keeps enemies and loot inside it.
+is worth picking up. This mod puts a band around your level and keeps enemies, loot and the missions you have accepted inside it.
 Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the loot he drops.
 
 Each side of the band is its own option. You can raise only the enemies that fall behind you,
-raise only the loot, cap anything that has run ahead of you, or leave any of them vanilla. The
+raise only the loot or only your missions, cap anything that has run ahead of you, or leave any of them vanilla. The
 enemy and item settings are independent, so you can keep vanilla enemy scaling and still get the
 gear they drop on your level.
 
 This is a new mod and I haven't been able to test everything, so if something looks off, leave a
-comment or [open an issue](https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk/issues).
+comment or [open an issue](https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk/issues).
 Even a one-liner about what you were doing helps. Pre-Sequel support is new in v0.6 and hasn't
 been play-tested yet, so reports from there are especially welcome.
 
 ## Options
 
-The four level bounds take `Vanilla`, `Player Level`, or `Within 1` to `Within 10 Levels`:
+The five level bounds take `Vanilla` (off), `Player Level` (exactly your level), or `Within 1`
+to `Within 10 Levels` (that many levels below you for a minimum, above you for a maximum):
 
 - **Minimum Enemy Level** - enemies below this are raised to it
 - **Maximum Enemy Level** - enemies above this are lowered to it
 - **Minimum Item Level** - loot below this is raised to it (enemy drops, chests, slot machines,
   boss drops)
 - **Maximum Item Level** - loot above this is lowered to it
+- **Minimum Mission Level** - missions you have accepted that fall below this are raised to it
+  and keep moving up with you as you level: the mission log shows the raised level, and the
+  reward item, XP and cash come at that level when you turn them in. A mission is never
+  lowered. Works with Reward Reroller: rerolls come out at that level too.
 
 An enemy that gets raised or lowered drops loot at its new level, and the item settings apply on
 top of that. In The Pre-Sequel the Grinder is left alone: its output takes its level from the
 items you feed it.
 
-Two on/off switches:
+One on/off switch:
 
-- **On-Level Mission Rewards** - missions you have accepted are raised to your level (never
-  lowered) and follow you as you level up: they show at your level in the mission log, and the
-  reward item, XP and cash come at that level when you turn them in. Works with Reward
-  Reroller: rerolls come out at your level too.
 - **On-Level Vendors** - vending machines stock at your level, item of the day included
 
-And **Log Adjustments** prints each change to the console.
+And **Log Adjustments** prints each change to the console and to
+`<game>\Binaries\Win32\Plugins\unrealsdk.log`.
 
 Everything starts off or on `Vanilla`. Each setting works on its own. In co-op only the
 host's settings matter. Enemies already alive when you level up keep their level until they
-respawn. A mission that was raised to your level is saved with your character and keeps that
-level even if you turn the option off. If turning a mission in is what levels you up, its reward
+respawn. A mission that was raised is saved with your character and keeps that level even if
+you set the bound back to `Vanilla`. If turning a mission in is what levels you up, its reward
 can be one level below your new level: it was rolled at the level you had when you handed it
 in. Each game keeps its own copy of the settings.
 
@@ -90,7 +93,7 @@ which is the place to look if anything here is out of date.
 ### 2. Install this mod
 
 1. Get `enemy_item_scaling.sdkmod` from this repository's
-   [Releases](https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk/releases) page. If
+   [Releases](https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk/releases) page. If
    there is no release yet, see "Building from source" below.
 2. Drop the `.sdkmod` file straight into `<game>\sdk_mods`. (If you instead have the folder
    `enemy_item_scaling`, put that folder in `sdk_mods` so that

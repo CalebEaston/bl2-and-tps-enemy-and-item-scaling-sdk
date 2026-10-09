@@ -380,7 +380,7 @@ factory hooks in TPS and logged live confirmations there (2026-08-23). An advers
   `LevelAdjustment` field, `GetBadassRanksReward`, `GetOtherCurrencyReward`,
   `GetItemRewardInvPools`. The mod writes `GameStage` only; if TPS's reward roll goes through
   `GetMissionLevel(pc, True)` = stage + adjustment, a reward can sit `LevelAdjustment` above the
-  mission's level by design. Probe in `docs/testing.md` section 9.
+  mission's level by design. Probe in `docs/testing-probes.md` section 9.
 - TPS-only object that matters: `WillowVendingMachineShift` (the SHiFT machine in Concordia)
   inherits `WillowInteractiveObject` directly, not `WillowVendingMachineBase`, and has its own
   `ResetInventory`, `GenerateGambleItemList`, `GetGambleItemOfTheDay`, `MaxGambleItems`;
@@ -423,8 +423,8 @@ factory hooks in TPS and logged live confirmations there (2026-08-23). An advers
 - Still Borderlands 2 wording that is correct for both: `UVHM_PLAYTHROUGH = 2` (TPS also has
   Normal/TVHM/UVHM), level caps are never hard-coded, `WillowPlayerPawn` exists in TPS.
 - Not done: AoDK (probably the BL2 build, no stubs checked; `"AoDK"` in `supported_games` is
-  probably the only change), TPS enemy vehicles, any in-game run. `docs/testing.md` section 9 is
-  the first-run list.
+  probably the only change), TPS enemy vehicles, any in-game run. `docs/testing.md` section 8
+  (plain) and `docs/testing-probes.md` section 9 (probes) are the first-run list.
 
 ## v0.7 (2026-10-09): missions follow the player, for good
 
@@ -508,7 +508,26 @@ Design:
   last; the map-load walk only runs for local controllers.
 - Open until played: whether the mission log number updates live (candidates: the definition's
   `GetGameStage()`, the record, in TPS `GetMissionLevel(pc, True)`; both copies are written so
-  it should, `log_all_calls` probe in `docs/testing.md` section 7); which accept-time hook first
-  sees the record; whether `FixupSavedMissionGameStage` rewrites records on load (the mod would
+  it should, `log_all_calls` probe in `docs/testing-probes.md` section 7); which accept-time
+  hook first sees the record; whether `FixupSavedMissionGameStage` rewrites records on load (the mod would
   then re-raise on every load, logging a `mission` line each time); the TPS `LevelAdjustment`
   question from v0.6.
+
+## v0.8 (2026-10-09): naming, the mission bound, the plain test plan
+
+- Caleb asked for the games to be named everywhere ("BL2 & TPS"), for the description to say
+  TPS *should* work but is untested, for `On-Level Mission Rewards` to become something like
+  "Force Min Mission Level To Player Level", and for a test plan without console typing (he
+  cannot paste into the in-game console).
+- The option is now the spinner `Minimum Mission Level` (`Vanilla` / `Player Level` /
+  `Within N Levels`), in the style of the other four bounds: `_level_mission` raises an accepted
+  mission to `player - N`, never lowers. Everything else from v0.7 stands. The in-game mod name
+  stays `Enemy and Item Scaling` (the mod list may truncate longer names; the games are in the
+  description's first line, the README title and the Nexus title instead). Renaming the option
+  orphans the old `On-Level Mission Rewards` value in the settings file; the changelog says so.
+- `docs/testing.md` is now the plain checklist; the console probes and detailed scenarios moved
+  to `docs/testing-probes.md` with only the option name updated (section 7).
+- Caleb renamed the local checkout to `bl2-and-tps-enemy-and-item-scaling-sdk` the same day and
+  then asked for the GitHub repository to follow: it is now
+  `CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk` (GitHub redirects the old name; every
+  URL in the docs and `pyproject.toml` was rewritten; the v0.6/v0.7 release pages moved with it).

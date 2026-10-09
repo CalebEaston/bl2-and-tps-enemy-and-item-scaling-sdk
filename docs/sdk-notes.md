@@ -157,7 +157,7 @@ Mission rewards:
   is locked, an unaccepted one recomputes from `GameStageRegion` on every `GetGameStage()`.
   `GetGameStage()`, `GetItemRewardsForPlayer()`, `GetExperienceReward()` are native, so a return
   override would not reach the native reward roll; the field write does.
-- Open: whether the roll reads the per-player saved copy
+- Open in v2 (moot since v0.5/v0.7, which write both): whether the roll reads the per-player saved copy
   (`pc.MissionPlaythroughs[pt].MissionList[pc.NativeGetMissionIndex(m)].GameStage`) instead.
   Verified fallback: PRE hooks on `WillowPlayerController:ReceiveWeaponReward/ReceiveItemReward`
   (`Mission`, `DefinitionData`) rewriting `ManufacturerGradeIndex` (index 3) and `GameStage`
@@ -194,11 +194,13 @@ Everything else:
   (out param: block+re-call leaves the caller with nothing) and
   `Engine.WillowInventory:ClientInitializeInventoryFromDefinition` (universal but late, parts
   already rolled, runs on clients).
-- The mission hook restores `GameStage`/`bGameStageLocked` in a POST_UNCONDITIONAL hook on the
+- (v2 design, superseded in v0.7, which restores nothing.) The mission hook restores
+  `GameStage`/`bGameStageLocked` in a POST_UNCONDITIONAL hook on the
   same function (the rolled items keep their level; this only stops a repeatable mission, or
   another mod calling `ServerGrantMissionRewards` on an unaccepted mission, from inheriting a
   stale locked stage later in the session).
-- Not built, by the simplicity rule: also writing the per-player copy
+- Not built in v2 (the per-player copy has been written since v0.5; vendor re-rolls still not):
+  also writing the per-player copy
   `obj.MissionPlaythroughs[pt].MissionList[idx].GameStage`, and re-rolling vendors on
   `WillowPlayerController:ExpLevelUp` (POST) via `find_all("WillowVendingMachine")` ->
   `ResetInventory()`. Each is a few lines if testing shows it is needed.
@@ -219,6 +221,8 @@ Everything else:
   `WillowPickup:CreatePickupFromMemento`; any future universal hook must skip them.
 
 ## Reward Reroller compatibility (v0.4; v0.3 attempt refuted)
+
+(Superseded in v0.7, which raises the mission permanently and restores nothing; kept as history.)
 
 ZetaDaemon's Reward Reroller (legacy mod, deps Enums + Structs, runs under `legacy_compat`) hooks
 `QuestAcceptGFxMovie.extCompleteConfirmed` and grants the rewards itself (`grant_rewards`), then
@@ -300,7 +304,8 @@ at 4):
   `WillowVehicle:SetGameStage/SetExpLevel`), `WillowAIPawn:AILevelUp` transformations.
 
 Mission rewards (reported: "This Town Ain't Big Enough" reward at 3 with player 6; whether the
-toggle was on is unconfirmed):
+toggle was on is unconfirmed). Superseded in v0.7, which raises the mission permanently and
+restores nothing; kept as history:
 
 - helios' in-game sweep proved XP follows the definition's `GameStage` of a locked mission, but
   nothing proves the native item roll (`GetItemRewardsForPlayer(WillowPC, out)`) reads the same
@@ -360,7 +365,8 @@ factory hooks in TPS and logged live confirmations there (2026-08-23). An advers
   `WillowVendingMachine:ResetInventory`, the three `QuestAcceptGFxMovie` list functions,
   `SetRewardCard`, `extCompleteConfirmed`, `GetSelectedIndex`, `ServerGrantMissionRewards`,
   `ReceiveWeaponReward`/`ReceiveItemReward` (same out `DefinitionData`),
-  `WillowClientDisableLoadingMovie`, `MissionRewardsReceived`, `UpdateMissionStatus`,
+  `WillowClientDisableLoadingMovie`, `MissionRewardsReceived` (no longer hooked since v0.7),
+  `UpdateMissionStatus`,
   `NativeGetMissionIndex`, `GetCurrentPlaythrough`, `GetPlayersMissionStatus`. Fields:
   `MissionPlaythroughs` (TPS's `MissionPlaythroughData` has extra members but `MissionList` is
   still there), `MissionStatusPlayerData.GameStage`, `MissionDefinition.GameStage` /
@@ -419,3 +425,90 @@ factory hooks in TPS and logged live confirmations there (2026-08-23). An advers
 - Not done: AoDK (probably the BL2 build, no stubs checked; `"AoDK"` in `supported_games` is
   probably the only change), TPS enemy vehicles, any in-game run. `docs/testing.md` section 9 is
   the first-run list.
+
+## v0.7 (2026-10-09): missions follow the player, for good
+
+Caleb's direction after v0.5/v0.6: "increase the actual level of missions to match the player's
+level rather than forcing the reward to be the same level". So the mission's level itself is
+raised and kept, and nothing is restored or patched afterwards. Reviewed by four agents plus
+skeptics (SDK source, stubs, the ReBased analyses, prior art); unplayed.
+
+What the game does (ReBased `NATIVE_MISSION_DISPATCH.md` B4, helios' 2026-09-23 sweep, stubs):
+
+- `MissionTracker.ActivateMission` (native) resets progress, **locks the game stage** and grants
+  the mission weapon at the `GameStageRegion` level, then the script hooks run in order:
+  `WillowPlayerController.UpdateMissionStatus(Mission, Active)` per player,
+  `ClientReceiveMissionStatus(MissionStatusData{Mission, Status}, optional GameStage)`,
+  `TriggerMissionStatusChangedDelegates`. `AcceptMission(Mission, MissionDirector)` is the
+  client-side entry of an NPC accept (synchronous in single-player; BouncyLootGod and mopioid's
+  Loot Randomizer hook it); ECHO / cutscene / behavior accepts never call it. The player's record
+  (`MissionStatusPlayerData`) is created by script on the controller (`AddMission`), most
+  plausibly inside `UpdateMissionStatus`; whether a POST hook there already sees it, or only the
+  later notifications do, cannot be read from stubs. Hence three idempotent accept-time hooks.
+- A picked-up mission's level is `MissionDefinition.GameStage` with `bGameStageLocked` True;
+  its XP and cash depend on that number only (no penalty for out-levelling). The per-player
+  record `MissionStatusPlayerData.GameStage` (CPF_Edit) is what `SaveMissionSaveGameData` writes
+  to disk and `ApplyMissionSaveGameData(SaveGame, bManageRewards)` /
+  `FixupSavedMissionGameStage(PlaythroughIndex, out MStatus)` put back on load; the definition's
+  fields are transient. BL2 and TPS declare all of these identically, as they do the new hook
+  targets `AcceptMission`, `UpdateMissionStatus`, `ClientReceiveMissionStatus`,
+  `OnExpLevelChange(bFeedback, bNaturalLevelup)` and `WillowClientDisableLoadingMovie()`.
+  `GetLevelForMission(InMission)` returns a MAP name (helios), not a level.
+- `ExpLevelUp(bCheated)` (script) increments `ExpLevel`, grants skill points, then calls
+  `OnExpLevelChange` (ReBased `NATIVE_PROGRESSION`). It is also called once at character load
+  with both flags off (RedxYeti's UltimateScavenger comment; RandomSkillSelector gates on
+  `bNaturalLevelup`), when the PRI may still hold the previous character's level, so v0.7 skips
+  that call and lets the map-load hook do the work. BouncyLootGod hooks `ExpLevelUp` POST
+  instead; either works.
+- `WillowClientDisableLoadingMovie` fires at the end of every map load, after Possess and the
+  PRI swap (helios probe 2026-09-24), i.e. with the character's level and missions in place.
+
+Design:
+
+- `_level_mission(mission, pc, entry=None)`: `wanted = max(current, player)` for a locked,
+  positive stage (raise only), else the player's level; writes `GameStage` + `bGameStageLocked`
+  on the definition and `GameStage` on the player's record (looked up via
+  `NativeGetMissionIndex` when not passed in); logs `mission <Name>: a -> b` only when the
+  definition's stage changes (lock-only or record-only writes are silent). No read-back: the
+  record is an in-place view (unrealsdk `WrappedStruct` over the array element), so a read-back
+  can only ever return what was just written.
+- Raise only (review finding): reward pools are gated by `MinGameStageRequirement`
+  (`GD_Itempools.Scheduling.GameStage_NN`: 7 for most gear, 10 launchers, 15 relics, 16
+  adaptive shields; DLC pools higher), Reward Reroller drops a pool below its gate and the native
+  roll plausibly does the same, so lowering a mission locked above the player (a DLC mission
+  accepted early, min 15/30 in Normal) could yield no reward at all. Raising never trips a gate.
+- `_level_accepted_missions(pc)` walks `MissionPlaythroughs[GetCurrentPlaythrough()].MissionList`
+  for `Status` in {1,2,3} (about 290 entries, a few property reads each; once per level-up and
+  map load).
+- Triggers: `AcceptMission` POST (after a `GetPlayersMissionStatus` check: the game can refuse
+  an accept and the POST runs anyway), `UpdateMissionStatus` POST_UNCONDITIONAL (statuses 1..3),
+  `ClientReceiveMissionStatus` POST (statuses 1..3; the last per-player notification, covers
+  accepts with no NPC), `OnExpLevelChange` POST (flags checked), `WillowClientDisableLoadingMovie`
+  POST (all accepted missions; also clears `_rolled_stages`), plus the v0.2/v0.4 backstops
+  (grant; NPC list, reward card, `extCompleteConfirmed` with a bounds and status check now).
+- Removed: `_saved_mission_stages`, `_restore_mission`, the `MissionRewardsReceived` hook, the
+  Complete branch, the map-load clear, the accept-time rewrite of the reward item and the record
+  read-back warning. `ServerGrantMissionRewards` PRE remembers `mission.GameStage` after
+  levelling in `_rolled_stages[path]`; `ReceiveWeaponReward` / `ReceiveItemReward` warn only when
+  `ManufacturerGradeIndex` is below that remembered stage (comparing with the live stage gave
+  false positives: a repeatable mission re-accepted after a level-up with its old reward still
+  unclaimed, or a level-up between roll and accept). No remembered roll (reroller path, a reward
+  claimed in a later session, co-op client) means no check.
+- Consequences, on purpose: raised levels persist in the save and stay after the option is
+  turned off or the mod removed. A turn-in whose XP levels the player gives an item one level
+  below the new level on the vanilla path (Complete is set before the XP, so the level-up walk
+  skips the mission) and at the new level with Reward Reroller (it grants XP first, while the
+  mission is still ReadyToTurnIn). The offer card and NPC list show the vanilla level until the
+  mission is accepted (NotStarted missions are untouched); every raised mission reads as
+  "Normal" difficulty in the log. A mission weapon keeps the region level it was granted at
+  inside `ActivateMission`. In UVHM the saved stage includes the OP level. Co-op (untested):
+  each hook uses the controller it fired for, so each player's record is written at that
+  player's level and the grant hook re-levels the shared definition to the turning-in player
+  right before the roll; the shared definition and the mission log show whichever player wrote
+  last; the map-load walk only runs for local controllers.
+- Open until played: whether the mission log number updates live (candidates: the definition's
+  `GetGameStage()`, the record, in TPS `GetMissionLevel(pc, True)`; both copies are written so
+  it should, `log_all_calls` probe in `docs/testing.md` section 7); which accept-time hook first
+  sees the record; whether `FixupSavedMissionGameStage` rewrites records on load (the mod would
+  then re-raise on every load, logging a `mission` line each time); the TPS `LevelAdjustment`
+  question from v0.6.

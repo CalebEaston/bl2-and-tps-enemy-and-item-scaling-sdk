@@ -4,15 +4,15 @@ This is the order to check things in, and what each check settles. Turn on `Log 
 all of it. Log lines look like `[Enemy and Item Scaling] spawn PawnBalance_Marauder: 3 -> 15
 (player 15)` with the kind being `spawn` (the factory hook), `enemy` / `enemy level` (the two
 safety nets; silent when the factory hook already did the work), `loot`, `container` or
-`vendor`, and only appear when a level actually changed. The lines `vendor restock X: a -> b`,
-`mission reward M: a -> b (player's copy c)` and `reward item M: a -> b` have no `(player N)`
-suffix.
+`vendor`, and only appear when a level actually changed. The lines `vendor restock X: a -> b`
+and `mission M: a -> b` have no `(player N)` suffix.
 
 First playtest (2026-10-08, v0.2-v0.4, Southern Shelf, player 4 then 6): enemies kept their
 nameplate level while their drops scaled (fixed in v0.5 by hooking the population factory, see
 scenario 1), and "This Town Ain't Big Enough" gave a level-3 reward at player level 6 with the
-mission toggle believed on (v0.5 adds the player's-copy write and the accept-time safety net;
-whether the toggle was on and what the log said is still to be confirmed).
+mission toggle believed on (v0.5 answered it with a player's-copy write and an accept-time
+rewrite of the item, both replaced in v0.7 by raising the mission itself, see section 7; whether
+the toggle was on and what the log said is still to be confirmed).
 
 ## 0. Console probes (before trusting anything)
 
@@ -41,12 +41,16 @@ Every hook target exists and has the parameter name the code reads (a `ValueErro
 function; it's fine if exactly one of the two `SetGameStageForSpawnedInventory` paths is missing):
 
 ```
-py import unrealsdk; print([(f, [p.Name for p in unrealsdk.find_object('Function', f)._properties()]) for f in ('WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor', 'WillowGame.PopulationFactoryBalancedAIPawn:RestorePopulatedAIPawn', 'WillowGame.WillowPawn:SetGameStage', 'WillowGame.WillowAIPawn:SetExpLevel', 'WillowGame.WillowPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowAIPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowInteractiveObject:SetGameStage', 'WillowGame.WillowPlayerController:ReceiveWeaponReward', 'WillowGame.WillowPlayerController:ReceiveItemReward')])
+py import unrealsdk; print([(f, [p.Name for p in unrealsdk.find_object('Function', f)._properties()]) for f in ('WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor', 'WillowGame.PopulationFactoryBalancedAIPawn:RestorePopulatedAIPawn', 'WillowGame.WillowPawn:SetGameStage', 'WillowGame.WillowAIPawn:SetExpLevel', 'WillowGame.WillowPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowAIPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowInteractiveObject:SetGameStage', 'WillowGame.WillowPlayerController:ReceiveWeaponReward', 'WillowGame.WillowPlayerController:ReceiveItemReward', 'WillowGame.WillowPlayerController:AcceptMission', 'WillowGame.WillowPlayerController:UpdateMissionStatus', 'WillowGame.WillowPlayerController:ClientReceiveMissionStatus', 'WillowGame.WillowPlayerController:OnExpLevelChange', 'WillowGame.WillowPlayerController:WillowClientDisableLoadingMovie', 'WillowGame.WillowPlayerController:ServerGrantMissionRewards')])
 ```
 
 Expect `GameStage` among the factory functions' params, `NewGameStage` for the `SetGameStage`
-functions, `NewExpLevel` for `SetExpLevel`, `NewInventoryGameStage` for the inventory ones and
-`Mission`, `DefinitionData` for the reward ones.
+functions, `NewExpLevel` for `SetExpLevel`, `NewInventoryGameStage` for the inventory ones,
+`Mission`, `DefinitionData` for the reward ones, `Mission`, `MissionDirector` for
+`AcceptMission`, `Mission`, `NewMissionStatus` for `UpdateMissionStatus`, `MissionStatusData`,
+`GameStage` for `ClientReceiveMissionStatus`, `bFeedback`, `bNaturalLevelup` for
+`OnExpLevelChange`, nothing for `WillowClientDisableLoadingMovie` and `Mission`,
+`bGrantAltReward` for `ServerGrantMissionRewards`.
 
 ## 1. Enemy floor
 
@@ -106,28 +110,42 @@ Search `<game>/Binaries/Win32/Plugins/unrealsdk.log` for `Traceback`, `NoneType`
 - Whether down-levelling chests in Mercenary Day (`Xmas_P`) breaks them, as Bouncy-Loot-God's
   exclusion suggests.
 
-## 7. Mission rewards (v2)
+## 7. Mission rewards (v0.7: missions follow the player)
 
-`On-Level Mission Rewards` on, level 15+ character, a cheap leftover level-5 side mission (e.g. in
-Southern Shelf). Before turning in, probe that the hook target exists and the fields are there:
+`On-Level Mission Rewards` on, `Log Adjustments` on, a character a few levels above a side
+mission it hasn't accepted yet (e.g. level 15 in Southern Shelf).
 
-```
-py import unrealsdk; print([p.Name for p in unrealsdk.find_object('Function', 'WillowGame.WillowPlayerController:ServerGrantMissionRewards')._properties()])
-```
-
-Expect `Mission` and `bGrantAltReward`. Open the NPC's mission list: expect one
-`mission reward <Mission_...>: 5 -> 15` line. Turn the mission in: probably a second
-`mission reward ...: 5 -> 15 (player's copy 5)` line from the grant hook (if the Complete status
-restores the stage just before it; otherwise the grant hook logs nothing), the reward card
-showing level 15 gear, and the XP reward noticeably larger than the mission log said. If a `reward item <Mission_...>: 5 -> 15 (the roll
-ignored the mission's level; please report this)` warning appears when the item is taken, the
-roll ignored both stage writes and only the accept-time safety net saved it: the item is level
-15 but the card showed 5. Then the roll's input is something else again
-(`MissionDefinition.ExpLevel`? the `UnclaimedRewards` path?) and the display-time rewrite of
-`MissionRewardGFxObject:SetUpRewardsPage` (`obj.RewardData`) is the next thing to try. A
-`reward item ...: 15 -> 16 (player 16)` info line is normal: the mission's XP levelled you up
-between the roll and the accept. A `could not write the player's copy` warning means the nested
-struct write did not take; see `docs/sdk-notes.md`.
+- Accept the mission: expect one `mission <Mission_...>: 5 -> 15` line as you accept it (three
+  hooks can print it, `UpdateMissionStatus`, `ClientReceiveMissionStatus` and `AcceptMission`;
+  the first to see the level prints, the others are silent), and the mission log showing it at
+  level 15 straight away. If the log still shows 5, the log reads something other than the
+  mission's stage: run `py import unrealsdk; unrealsdk.hooks.log_all_calls(True)` with the log
+  open for a second, turn it off again, and grep the calls log for `GetGameStage`,
+  `GetExpectedGameStage` and `GetMissionLevel`.
+- Accept a plot mission that is handed out by an ECHO or a cutscene rather than an NPC: same
+  line, same log level. That is the `ClientReceiveMissionStatus` hook earning its keep.
+- Level up with it still open: one `mission ...` line per accepted mission that was below the
+  new level; the log numbers follow.
+- Save-quit-continue: the mission log must still show the raised level and the load must not
+  print a `mission` line for it. A `mission X: 5 -> 15` line on every load means the game put
+  the vanilla stage back on load (`FixupSavedMissionGameStage`, which the mod does not hook)
+  instead of using the saved record; the mod raises it again each time, so the feature still
+  works, but report it with the line.
+- Turn it in: the reward card shows gear at your level and the XP is what a level-15 mission
+  gives (noticeably more than the log said before you accepted). No `reward item ... (please
+  report this)` warning. If that warning appears, the roll read something other than
+  `GameStage` (`MissionDefinition.ExpLevel`? in The Pre-Sequel `LevelAdjustment`?), and
+  rewriting the item at `ReceiveWeaponReward` / `ReceiveItemReward` (the v0.5 approach) goes
+  back in.
+- Turn in a mission whose XP levels you up: the reward is either one level below your new level
+  (vanilla order: the mission is marked complete before the XP, so the level-up skips it) or at
+  the new level (Reward Reroller grants the XP first). Both are expected; only an item below the
+  level the mission had when it was rolled is a report.
+- A mission accepted above your level (a DLC mission taken early): never lowered. Expect no
+  `mission` line for it until you catch up with it.
+- With Reward Reroller: rerolls come out at your level.
+- Turn the option off: missions already raised keep their level (it is in the save); newly
+  accepted ones stay vanilla.
 
 ## 8. Vendors (v2)
 
@@ -176,8 +194,9 @@ only checked against the game's class stubs.
   line at map load, only a `vendor restock WillowVendingMachineShift_N: a -> b` line when it
   resets). Whether its gamble items (if the shipped machine offers any) follow the stage is
   unknown; compare their level before and after.
-- Section 7 (mission rewards) with any leftover low-level side mission in Concordia. The
-  Pre-Sequel adds `MissionDefinition.GetMissionLevel(pc, bIncludeLevelAdjustment)` and a
+- Section 7 (mission rewards) in Concordia: a side mission you accept there is raised as you
+  accept it; one accepted earlier and left over is raised as the map loads (one `mission` line
+  at load instead of at accept). The Pre-Sequel adds `MissionDefinition.GetMissionLevel(pc, bIncludeLevelAdjustment)` and a
   `LevelAdjustment` field that Borderlands 2 lacks. Before turning in, with `i` the mission's
   index in your log, print
   `py from mods_base import get_pc; pc = get_pc(); m = pc.MissionPlaythroughs[pc.GetCurrentPlaythrough()].MissionList[i].MissionDef; print(m.Name, m.GetGameStage(), m.GetMissionLevel(pc, True), m.LevelAdjustment)`
@@ -197,5 +216,7 @@ only checked against the game's class stubs.
   an item: reward pools have minimum-level gates (most gear pools open at 7, relics at 15), and
   the native roll may drop a gated pool rather than clamp. Turn in a gated mission at level 5
   with the toggle on.
-- Co-op: whether `ServerGrantMissionRewards` runs once per player on the host with that player's
-  controller (expected, untested), so each player gets rewards at their own level.
+- Co-op (untested): `ServerGrantMissionRewards` is expected to run once per player on the host
+  with that player's controller; since v0.7 every write goes to the one shared mission object,
+  so the last write wins and a client's turn-in can leave the host's mission at the client's
+  level. Note what the reward card shows for each player.

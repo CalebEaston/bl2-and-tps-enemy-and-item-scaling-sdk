@@ -50,8 +50,9 @@ on_level_mission_rewards = BoolOption(
     "On-Level Mission Rewards",
     False,
     description=(
-        "Mission reward items are generated at your level instead of the mission's level.\n"
-        "The mission's XP and cash rewards scale with it."
+        "Missions you have accepted are raised to your level and follow you as you level up,\n"
+        "so their reward item, XP and cash come at your level. Saved with your character:\n"
+        "a raised mission keeps its level if you turn this off."
     ),
 )
 on_level_vendors = BoolOption(
@@ -491,20 +492,18 @@ def on_vending_machine_reset(
         obj.SetExpLevel(player_level)
 
 
-# Mission stages we changed so rewards roll at the player's level, keyed by mission path and
-# holding the originals: the definition's (GameStage, bGameStageLocked) and the player's own
-# saved copy of the stage (None unless we wrote that copy). Restored once the reward is taken,
-# and forgotten on every map load so nothing carries over to another character or playthrough.
-_saved_mission_stages: dict[str, tuple[int, bool, int | None]] = {}
-
 # EMissionStatus values for a mission the player has accepted but not finished with:
 # Active, RequiredObjectivesComplete, ReadyToTurnIn.
 MISSION_ACCEPTED_STATUSES = frozenset({1, 2, 3})
 
+# The level each mission had when the game rolled its rewards, keyed by mission path. Only used
+# to check the reward item against it as the player takes it; cleared on every map load.
+_rolled_stages: dict[str, int] = {}
+
 
 def _player_mission_entry(pc: UObject, mission: UObject) -> WrappedStruct | None:
     """
-    Finds a player's own saved record of a mission (status, progress and game stage).
+    Finds a player's own record of a mission (status, progress and game stage).
 
     Args:
         pc: The WillowPlayerController.
@@ -526,53 +525,148 @@ def _player_mission_entry(pc: UObject, mission: UObject) -> WrappedStruct | None
     return missions[index]
 
 
-def _level_mission(mission: UObject, pc: UObject, *, write_entry: bool = False) -> None:
+def _level_mission(mission: UObject, pc: UObject, entry: WrappedStruct | None = None) -> None:
     """
-    Sets a mission's game stage to a player's level, remembering what it was.
+    Raises a mission's level to a player's level, for good.
 
-    The mission's level lives in two places: the definition's transient `GameStage` (what the
-    XP and cash come from, and what mods asking `mission.GetGameStage()` see) and the player's
-    own saved copy of it, which goes into the save file. The definition is always written; the
-    saved copy only right before the game's own reward roll (`write_entry`), the one reader
-    that might use it, so a mission merely looked at and left for later isn't changed on disk.
+    The level lives in two places: the definition's transient `GameStage` (what the mission
+    log, the XP and cash, the reward roll and mods asking `mission.GetGameStage()` see) and the
+    player's own record of the mission, which is what the save file stores and what the game
+    puts back into the definition on load. Both are written, so from now on the mission simply
+    is at the player's level, as if it had been accepted at that level in UVHM.
+
+    Never lowered: reward pools have minimum levels, and a mission locked above the player (a
+    DLC mission taken early) could end up with no reward at all if pulled below them.
 
     Args:
         mission: The MissionDefinition.
         pc: The WillowPlayerController whose level to use.
-        write_entry: Also write the player's saved copy of the stage.
+        entry: The player's record of the mission, if the caller already has it.
     """
     player_level = player_level_for(pc)
     if player_level is None:
         return
+    if entry is None:
+        entry = _player_mission_entry(pc, mission)
     current = int(mission.GameStage)
     locked = bool(mission.bGameStageLocked)
-    entry = _player_mission_entry(pc, mission) if write_entry else None
+    # An accepted mission is locked at a positive stage; anything else has no level of its own yet
+    wanted = max(current, player_level) if locked and current > 0 else player_level
     entry_stage = None if entry is None else int(entry.GameStage)
-    if current == player_level and locked and entry_stage in (None, player_level):
+    if current == wanted and locked and entry_stage in (None, wanted):
         return
 
-    if log_adjustments.value:
-        copy_note = "" if entry is None else f" (player's copy {entry_stage})"
-        logging.info(
-            f"{LOG_PREFIX} mission reward {mission.Name}: {current} -> {player_level}{copy_note}",
-        )
-    path = mission._path_name()
-    saved = _saved_mission_stages.get(path)
-    if saved is None:
-        _saved_mission_stages[path] = (current, locked, entry_stage)
-    elif saved[2] is None and entry_stage is not None:
-        # First time we touch the saved copy of a mission we had already levelled
-        _saved_mission_stages[path] = (saved[0], saved[1], entry_stage)
-    mission.GameStage = player_level
+    if log_adjustments.value and current != wanted:
+        logging.info(f"{LOG_PREFIX} mission {mission.Name}: {current} -> {wanted}")
+    mission.GameStage = wanted
     # Accepted missions are already locked; make sure of it so the game doesn't recompute the
     # stage from the mission's region.
     mission.bGameStageLocked = True
     if entry is not None:
-        entry.GameStage = player_level
-        if int(entry.GameStage) != player_level:
-            logging.warning(
-                f"{LOG_PREFIX} could not write the player's copy of {mission.Name}'s stage",
-            )
+        entry.GameStage = wanted
+
+
+def _level_accepted_missions(pc: UObject) -> None:
+    """
+    Levels every mission a player has accepted and not yet turned in.
+
+    Args:
+        pc: The WillowPlayerController.
+    """
+    playthroughs = pc.MissionPlaythroughs
+    playthrough = int(pc.GetCurrentPlaythrough())
+    if not 0 <= playthrough < len(playthroughs):
+        return
+    for entry in playthroughs[playthrough].MissionList:
+        if int(entry.Status) in MISSION_ACCEPTED_STATUSES and entry.MissionDef is not None:
+            _level_mission(entry.MissionDef, pc, entry)
+
+
+@hook("WillowGame.WillowPlayerController:AcceptMission", Type.POST)
+def on_mission_accepted(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Levels a mission as the player accepts it, so the log shows it at their level at once.
+
+    The game can refuse an acceptance (dependencies not met, for one), and this runs either
+    way, so the mission's status is checked first.
+    """
+    if not on_level_mission_rewards.value:
+        return
+    mission = args.Mission
+    if mission is None:
+        return
+    if int(obj.GetPlayersMissionStatus(mission)) not in MISSION_ACCEPTED_STATUSES:
+        return
+    _level_mission(mission, obj)
+
+
+@hook("WillowGame.WillowPlayerController:ClientReceiveMissionStatus", Type.POST)
+def on_mission_status_received(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Levels a mission as the player is told its new status, for acceptances with no NPC.
+
+    Plot missions handed out by an ECHO or a cutscene never go through `AcceptMission`; the
+    status notification is the last thing the game sends each player about the change, so a
+    write here can't be overwritten by the game's own stage bookkeeping.
+    """
+    if not on_level_mission_rewards.value:
+        return
+    data = args.MissionStatusData
+    if int(data.Status) not in MISSION_ACCEPTED_STATUSES:
+        return
+    mission = data.Mission
+    if mission is not None:
+        _level_mission(mission, obj)
+
+
+@hook("WillowGame.WillowPlayerController:OnExpLevelChange", Type.POST)
+def on_player_level_up(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Levels every accepted mission when the player levels up.
+
+    The game also calls this once while a character loads, with both flags off and possibly a
+    stale level; that call is skipped and the map-load hook below does the work instead.
+    """
+    if not on_level_mission_rewards.value:
+        return
+    if not (bool(args.bFeedback) or bool(args.bNaturalLevelup)):
+        return
+    _level_accepted_missions(obj)
+
+
+@hook("WillowGame.WillowPlayerController:WillowClientDisableLoadingMovie", Type.POST)
+def on_map_loaded(
+    obj: UObject,
+    _args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Levels every accepted mission once a map has loaded.
+
+    Covers missions accepted before the option was turned on and characters that levelled while
+    the mission sat in another map; after a save-quit the game puts the saved record back into
+    the definition, so the level sticks and this has nothing to do.
+    """
+    _rolled_stages.clear()
+    if not on_level_mission_rewards.value:
+        return
+    _level_accepted_missions(obj)
 
 
 @hook("WillowGame.QuestAcceptGFxMovie:UpdateMissionList", Type.POST)
@@ -587,8 +681,9 @@ def on_mission_list_updated(
     """
     Levels every accepted mission in an NPC's mission list as soon as the list is built.
 
-    This happens before anything can be turned in, whichever order other mods' hooks run in,
-    which is what makes mods that roll rewards themselves (Reward Reroller) see the level.
+    Normally a no-op (the missions were levelled on accept and on each level-up). Kept because
+    it runs before anything can be turned in, whichever order other mods' hooks run in, which
+    is what makes mods that roll rewards themselves (Reward Reroller) see the level.
     """
     if not on_level_mission_rewards.value:
         return
@@ -642,10 +737,14 @@ def on_complete_confirmed(
     pc = obj.WPCOwner
     if pc is None:
         return
-    mission = obj.MissionList[obj.GetSelectedIndex()].MissionDef
-    if mission is None:
+    index = int(obj.GetSelectedIndex())
+    entries = obj.MissionList
+    if not 0 <= index < len(entries):
         return
-    _level_mission(mission, pc)
+    entry = entries[index]
+    if int(entry.MissionStatus) not in MISSION_ACCEPTED_STATUSES or entry.MissionDef is None:
+        return
+    _level_mission(entry.MissionDef, pc)
 
 
 @hook("WillowGame.WillowPlayerController:ServerGrantMissionRewards")
@@ -660,96 +759,15 @@ def on_grant_mission_rewards(
 
     Covers completions that never show a reward card (scripted ones). Expected to run on the
     host once per player (untested in co-op), so the level comes from that player's controller.
-    This is the one place the player's saved copy of the stage is written too, in case the
-    native roll reads that rather than the definition.
+    Remembers the level the roll is about to use, for the check below.
     """
     if not on_level_mission_rewards.value:
         return
     mission = args.Mission
     if mission is None:
         return
-    _level_mission(mission, obj, write_entry=True)
-
-
-@hook("WillowGame.WillowPlayerController:ReceiveWeaponReward")
-@hook("WillowGame.WillowPlayerController:ReceiveItemReward")
-def on_receive_reward(
-    obj: UObject,
-    args: WrappedStruct,
-    _ret: Any,
-    func: BoundFunction,
-) -> type[Block] | None:
-    """
-    Last line of defence: re-levels a reward item as the player takes it.
-
-    If the item is already at the player's level, this does nothing. Usually a difference just
-    means the mission's own XP levelled the player up between the roll and the accept, and the
-    item is bumped like any other adjustment. If the item is at the level the mission had
-    before we changed it, the roll ignored our write: that's a bug worth reporting, so it is
-    always logged.
-    """
-    if not on_level_mission_rewards.value:
-        return None
-    player_level = player_level_for(obj)
-    if player_level is None:
-        return None
-    data = args.DefinitionData
-    current = int(data.ManufacturerGradeIndex)
-    if current == player_level:
-        return None
-
-    mission = args.Mission
-    name = "reward" if mission is None else mission.Name
-    saved = None if mission is None else _saved_mission_stages.get(mission._path_name())
-    if saved is not None and current in (saved[0], saved[2]):
-        logging.warning(
-            f"{LOG_PREFIX} reward item {name}: {current} -> {player_level}"
-            " (the roll ignored the mission's level; please report this)",
-        )
-    elif log_adjustments.value:
-        logging.info(
-            f"{LOG_PREFIX} reward item {name}: {current} -> {player_level} (player {player_level})",
-        )
-    data.ManufacturerGradeIndex = player_level
-    data.GameStage = player_level
-    args.DefinitionData = data
-    with prevent_hooking_direct_calls():
-        func(args)
-    return Block
-
-
-def _restore_mission(mission: UObject, pc: UObject) -> None:
-    """
-    Puts a mission's stage back to what the game had, if we changed it.
-
-    Args:
-        mission: The MissionDefinition.
-        pc: The WillowPlayerController whose saved copy to restore.
-    """
-    saved = _saved_mission_stages.pop(mission._path_name(), None)
-    if saved is None:
-        return
-    mission.GameStage, mission.bGameStageLocked, entry_stage = saved
-    entry = _player_mission_entry(pc, mission)
-    if entry is not None and entry_stage is not None:
-        entry.GameStage = entry_stage
-
-
-# EMissionStatus.MS_Complete
-MISSION_COMPLETE = 4
-
-
-@hook("WillowGame.WillowPlayerController:MissionRewardsReceived", Type.POST_UNCONDITIONAL)
-def on_mission_rewards_received(
-    obj: UObject,
-    args: WrappedStruct,
-    _ret: Any,
-    _func: BoundFunction,
-) -> None:
-    """Restores the mission once the player has taken the reward (rerolls included)."""
-    mission = args.Mission
-    if mission is not None:
-        _restore_mission(mission, obj)
+    _level_mission(mission, obj)
+    _rolled_stages[mission._path_name()] = int(mission.GameStage)
 
 
 @hook("WillowGame.WillowPlayerController:UpdateMissionStatus", Type.POST_UNCONDITIONAL)
@@ -760,35 +778,52 @@ def on_mission_status_updated(
     _func: BoundFunction,
 ) -> None:
     """
-    Restores the mission when it is marked complete.
+    Levels a mission whenever the game sets it to an accepted status.
 
-    In the vanilla flow this fires before the reward roll, and the ServerGrantMissionRewards
-    hook simply levels the mission again; with Reward Reroller it fires when the reward is
-    accepted, after the rolls. Either way nothing is left levelled once the mission is done.
+    The game locks a mission's level right before this runs for a newly accepted mission, so
+    this is where the player's record of it is first complete; the accept hook above then has
+    nothing left to do.
     """
-    if int(args.NewMissionStatus) != MISSION_COMPLETE:
+    if not on_level_mission_rewards.value:
+        return
+    if int(args.NewMissionStatus) not in MISSION_ACCEPTED_STATUSES:
         return
     mission = args.Mission
     if mission is not None:
-        _restore_mission(mission, obj)
+        _level_mission(mission, obj)
 
 
-@hook("WillowGame.WillowPlayerController:WillowClientDisableLoadingMovie", Type.POST)
-def on_map_loaded(
+@hook("WillowGame.WillowPlayerController:ReceiveWeaponReward")
+@hook("WillowGame.WillowPlayerController:ReceiveItemReward")
+def on_receive_reward(
     _obj: UObject,
-    _args: WrappedStruct,
+    args: WrappedStruct,
     _ret: Any,
     _func: BoundFunction,
 ) -> None:
     """
-    Forgets the saved mission stages when a map finishes loading.
+    Checks, as the player takes a reward item, that it was rolled at the mission's level.
 
-    Every character or playthrough switch goes through a load, so a stage remembered for one
-    character can never be written into another's record. A mission levelled in one map and
-    turned in in another just keeps the level it was last set to, which is what the turn-in
-    sets anyway.
+    Nothing is changed here: the mission itself was at the player's level when the game rolled
+    the reward, so the item should be too. An item below that level means the roll read
+    something else, which is a bug worth reporting, so it is always logged. A reward with no
+    remembered roll (Reward Reroller's, or one left unclaimed in an earlier session) is not
+    checked.
     """
-    _saved_mission_stages.clear()
+    if not on_level_mission_rewards.value:
+        return
+    mission = args.Mission
+    if mission is None:
+        return
+    expected = _rolled_stages.get(mission._path_name())
+    if expected is None:
+        return
+    rolled = int(args.DefinitionData.ManufacturerGradeIndex)
+    if rolled < expected:
+        logging.warning(
+            f"{LOG_PREFIX} reward item {mission.Name} is level {rolled} but the mission was level"
+            f" {expected} when it was rolled (please report this)",
+        )
 
 
 mod = build_mod(

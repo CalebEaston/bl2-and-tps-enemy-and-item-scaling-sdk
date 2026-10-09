@@ -1,5 +1,15 @@
 ## Changelog
 
+### Enemy and Item Scaling v0.7
+- `On-Level Mission Rewards` now raises the missions themselves instead of patching their
+  rewards. An accepted mission is raised to your level (never lowered) when you accept it,
+  whenever you level up and whenever a map loads, and that level is written into your
+  character's mission record, so the mission log, the XP, the cash and the reward all agree,
+  survive a save-quit and stay even if you turn the option off. A mission that levels you up as
+  you turn it in can give its reward one level below your new level. The reward item is no
+  longer rewritten as you take it; if a reward ever comes out below the level it was rolled
+  at, a "please report this" line is logged instead.
+
 ### Enemy and Item Scaling v0.6
 - Added Borderlands: The Pre-Sequel support. The mod can now be enabled there (earlier versions
   declared themselves Borderlands 2 only, so the mod manager locked them), and the player level

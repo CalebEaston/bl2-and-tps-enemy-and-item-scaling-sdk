@@ -21,10 +21,12 @@ no OP levels and no such field; `has_overpower_levels()` looks the field up on t
 guards the read). Item bounds
 work without enemy bounds (vanilla enemies, on-level loot); a clamped enemy drops loot at its
 clamped level with the item band applied on top. Two `BoolOption`s (v2): `On-Level Mission
-Rewards` (the mission's stage is set to the player turning it in before its rewards, XP and cash
-are rolled: the definition's transient stage from every trigger, the player's saved copy only in
-the grant hook since that copy goes into the save file; a reward item is re-levelled as it is
-taken if it still isn't on level) and
+Rewards` (v0.7: every accepted mission is raised to the player's level, never lowered, for good:
+the definition's `GameStage` + `bGameStageLocked` and the player's
+`MissionStatusPlayerData.GameStage` record, which the save file stores; written on accept, on
+each level-up, on map load and again at the NPC list / reward card / turn-in / grant backstops;
+nothing is restored; the reward item is only checked as it is taken, and a roll below the stage
+the mission had at the roll logs a "please report this" line) and
 `On-Level Vendors` (vending machines are set to the player's level when they spawn and before
 they restock; vendors are excluded from the item band; in TPS the Concordia SHiFT machine,
 `WillowVendingMachineShift`, a plain `WillowInteractiveObject`, counts as a vendor too).
@@ -33,7 +35,8 @@ they restock; vendors are excluded from the item band; in TPS the Concordia SHiF
 Current priority: **get a working version in-game first, then patch**. Don't over-engineer for
 compatibility yet; see "Later" at the bottom for the compatibility work that is deferred. Keep it
 simple: an option that only takes effect after a save-quit-continue is acceptable, so prefer the
-plain approach over live re-application.
+plain approach over live re-application (the one exception so far: accepted missions are
+re-levelled on every level-up, v0.7, because the mission log is meant to track the player).
 
 ## Layout
 
@@ -133,13 +136,13 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 | `WillowGame.WillowPawn:SetGameStageForSpawnedInventory` and `WillowAIPawn:` same | `NewInventoryGameStage` | level of an enemy's drops (a clamped enemy's drops follow its clamped level; the item band applies on top) |
 | `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band; never lowered when the object path starts with `Xmas_P.` or `MoonShotIntro_P.`, where Bouncy Loot God found a chest that spawns nothing when down-levelled); vending machines (vendor toggle) |
 | `WillowGame.WillowVendingMachine:ResetInventory` and `WillowGame.WillowVendingMachineShift:ResetInventory` (TPS only; never fires in BL2) | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
-| `WillowGame.QuestAcceptGFxMovie:UpdateMissionList` / `:DetermineQuestEntries` / `:extPopulateQuestEntries` (POST) | iterate `obj.MissionList[]` (`MissionDef`, `MissionStatus`), player `obj.WPCOwner` | primary: levels every accepted mission (status 1/2/3) when an NPC's list is built, before any turn-in, order-independent |
-| `WillowGame.QuestAcceptGFxMovie:SetRewardCard` (PRE) | `MissionDef`, `WPC`; same write if status in {1,2,3} | second trigger when a reward card shows |
-| `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; mission from `obj.MissionList[obj.GetSelectedIndex()].MissionDef`, player `obj.WPCOwner` | backstop at the turn-in confirm; only beats the reroller's hook if ours registered first |
-| `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE) | `Mission`, `bGrantAltReward`; same write | scripted completions with no UI; expected once per player on the host, untested in co-op |
-| `WillowGame.WillowPlayerController:ReceiveWeaponReward` / `:ReceiveItemReward` (PRE) | `Mission`, out `DefinitionData`; rewrite `ManufacturerGradeIndex` + `GameStage`, `func(args)`, `Block` | accept-time safety net: the item is handed over at the player's level. Usually a difference is the mission's own XP levelling the player between roll and accept (ordinary adjustment); if the item is at the mission's ORIGINAL stage (from `_saved_mission_stages`) the roll ignored the write and a "please report this" warning is always logged |
-| `WillowGame.WillowPlayerController:WillowClientDisableLoadingMovie` (POST) | none | clears `_saved_mission_stages` on every map load so no stage crosses characters/playthroughs |
-| `WillowGame.WillowPlayerController:MissionRewardsReceived` (POST_UNCONDITIONAL) and `:UpdateMissionStatus` (POST_UNCONDITIONAL, when `NewMissionStatus == 4` Complete) | `Mission`; restores the saved stage | after the reward is taken / the mission completes; in the vanilla flow Complete comes before the roll and the grant hook re-levels |
+| `WillowGame.WillowPlayerController:AcceptMission` (POST, status in {1,2,3} via `GetPlayersMissionStatus`), `:UpdateMissionStatus` (POST_UNCONDITIONAL, `NewMissionStatus` in {1,2,3}) and `:ClientReceiveMissionStatus` (POST, `MissionStatusData.Mission` / `.Status` in {1,2,3}) | `Mission`; same write | the moment a mission is accepted, by NPC or by script (ECHO, cutscene): the native `MissionTracker.ActivateMission` locks the stage, then calls `UpdateMissionStatus` and `ClientReceiveMissionStatus` per player, so a POST write wins; three idempotent hooks because which of them first sees the player's record is open (`docs/sdk-notes.md` v0.7) |
+| `WillowGame.WillowPlayerController:OnExpLevelChange` (POST, only when `bFeedback` or `bNaturalLevelup`) and `:WillowClientDisableLoadingMovie` (POST) | flags / none; iterate `obj.MissionPlaythroughs[obj.GetCurrentPlaythrough()].MissionList` (`Status`, `MissionDef`, `GameStage`) | every accepted mission after a level-up (`ExpLevelUp` increments `ExpLevel` then calls this; the flags skip the call the game makes at character load, when the PRI may still be stale) and after a map load (missions accepted before the option was on, levels gained elsewhere; also clears `_rolled_stages`) |
+| `WillowGame.QuestAcceptGFxMovie:UpdateMissionList` / `:DetermineQuestEntries` / `:extPopulateQuestEntries` (POST) | iterate `obj.MissionList[]` (`MissionDef`, `MissionStatus`), player `obj.WPCOwner` | backstop (the v0.4 primary): every accepted mission when an NPC's list is built; normally a no-op since v0.7, kept because it runs before any turn-in whichever order other mods' hooks run in |
+| `WillowGame.QuestAcceptGFxMovie:SetRewardCard` (PRE) | `MissionDef`, `WPC`; same write if status in {1,2,3} | backstop when a reward card shows (still before Reward Reroller's turn-in hook) |
+| `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; `obj.MissionList[obj.GetSelectedIndex()]` after a bounds and status check, player `obj.WPCOwner` | backstop at the turn-in confirm; only beats the reroller's hook if ours registered first |
+| `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE) | `Mission`, `bGrantAltReward`; same write, then the stage goes into `_rolled_stages` | right before the native roll, scripted completions included; expected once per player on the host, untested in co-op |
+| `WillowGame.WillowPlayerController:ReceiveWeaponReward` / `:ReceiveItemReward` (PRE) | `Mission`, out `DefinitionData`; read only | check only: `ManufacturerGradeIndex` below the stage remembered at the roll means the roll read something else, logged as a "please report this" warning; no remembered roll (reroller path, a reward claimed in a later session) means no check |
 
 All of this is single-player / host-side; in co-op the shared mission object can end up at
 another player's level (documented, untested).
@@ -150,10 +153,14 @@ Reward Reroller (legacy mod the user plays with) blocks `ServerGrantMissionRewar
 **Legacy mods' calls never trigger hooks**: `legacy_compat` wraps every legacy callback in
 `prevent_hooking_direct_calls()` (`.willow2-mod-manager/src/legacy_compat/__init__.py:123`), so a
 return override on `GetGameStage` (the v0.3 attempt) can't reach them. Only the field write
-does, and it has to happen before their hook runs: hence the reward-card hook. PRE hooks on one
-function run in registration order, so our `extCompleteConfirmed` hook runs before the
-reroller's only when our mod was enabled first (normal launch order), which is why the reward
-card is the primary hook.
+does, and it has to happen before their hook runs. Since v0.7 it happens at accept, on every
+level-up and on every map load, so the mission has been at the player's level for a while by
+the time the reroller reads it; the NPC-list and reward-card hooks stay as backstops that also
+run before the reroller's turn-in hook. PRE hooks on one function run in registration order, so
+our `extCompleteConfirmed` hook runs before the reroller's only when our mod was enabled first
+(normal launch order). The reroller grants the mission's XP before it rolls, while the mission
+is still ReadyToTurnIn, so a turn-in that levels the player rerolls at the new level; the
+vanilla path marks the mission Complete before the XP, so there the item is one level below.
 
 The first three are the exact targets shipped by apple1417's `enemy_level_randomizer` and EdricY's
 Bouncy-Loot-God `always_on_level`; the mission one is hooked by RedxYeti's PayToLoot and its
@@ -167,9 +174,10 @@ or container they come from, so the hooks above cover them. See `docs/sdk-notes.
   Nexus). Plan: get their folders, grep their hook targets against ours, and if they overlap
   consider `Type.POST_UNCONDITIONAL` hooks that read back `obj.GetGameStage()` and only re-set
   out-of-band values, so other mods' pre-hooks run first.
-- Known v2 trade-offs, left simple on purpose: mission XP and cash scale with the reward level
-  (restore vanilla XP via a `(Block, value)` return override on
-  `WillowGame.MissionDefinition:GetExperienceReward` if ever unwanted); base-game vendor stock keeps
+- Known trade-offs, left simple on purpose: mission XP and cash follow the mission's raised level
+  (the point of v0.7; if ever unwanted, a `(Block, value)` return override on
+  `WillowGame.MissionDefinition:GetExperienceReward` is the lever, with the caveat that it is
+  native and may not reach the game's own callers); base-game vendor stock keeps
   its vanilla `-2..0` level variance (`GD_Economy.VendingMachine.Init_VendingMachine_LootGamestageVariance`,
   a global object other mods edit too); the item of the day is exactly the machine's stage.
 - Nexus Mods listing: Nexus can't be automated, so `docs/nexus.md` holds the summary, BBCode

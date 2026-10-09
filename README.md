@@ -41,15 +41,20 @@ items you feed it.
 
 Two on/off switches:
 
-- **On-Level Mission Rewards** - mission reward items come out at your level (the XP and cash
-  scale with them). Works with Reward Reroller: rerolls come out at your level too.
+- **On-Level Mission Rewards** - missions you have accepted are raised to your level (never
+  lowered) and follow you as you level up: they show at your level in the mission log, and the
+  reward item, XP and cash come at that level when you turn them in. Works with Reward
+  Reroller: rerolls come out at your level too.
 - **On-Level Vendors** - vending machines stock at your level, item of the day included
 
 And **Log Adjustments** prints each change to the console.
 
 Everything starts off or on `Vanilla`. Each setting works on its own. In co-op only the
 host's settings matter. Enemies already alive when you level up keep their level until they
-respawn. Each game keeps its own copy of the settings.
+respawn. A mission that was raised to your level is saved with your character and keeps that
+level even if you turn the option off. If turning a mission in is what levels you up, its reward
+can be one level below your new level: it was rolled at the level you had when you handed it
+in. Each game keeps its own copy of the settings.
 
 ## Installation
 

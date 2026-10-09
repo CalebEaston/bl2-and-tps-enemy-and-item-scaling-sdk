@@ -46,11 +46,11 @@ The four level bounds take [b]Vanilla[/b], [b]Player Level[/b], or [b]Within 1[/
 Two on/off switches:
 
 [list]
-[*][b]On-Level Mission Rewards[/b] - mission reward items come out at your level (the XP and cash scale with them)
+[*][b]On-Level Mission Rewards[/b] - missions you have accepted are raised to your level (never lowered) and follow you as you level up, so the reward item, XP and cash come at your level when you turn them in
 [*][b]On-Level Vendors[/b] - vending machines stock at your level, item of the day included
 [/list]
 
-Everything starts off or on Vanilla, so the mod does nothing until you pick something. In co-op only the host's settings matter. Enemies already alive when you level up keep their level until they respawn.
+Everything starts off or on Vanilla, so the mod does nothing until you pick something. In co-op only the host's settings matter. Enemies already alive when you level up keep their level until they respawn. A mission that was raised to your level is saved with your character and keeps that level even if you turn the option off.
 
 [size=4][b]Installation[/b][/size]
 

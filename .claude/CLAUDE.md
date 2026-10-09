@@ -55,7 +55,11 @@ pyproject.toml            pyright + ruff config only (copied from the bl-sdk rep
 ```
 
 The README is the player-facing page (download link first, install guide, no internals); keep
-developer material out of it and in `docs/`.
+developer material out of it and in `docs/`. Its first line is the AI disclosure, worded exactly
+"This mod was made with AI (Claude Code). The code and docs were written with it, under my
+direction." (Caleb's wording; not "with the help of AI"). Its Credits section lists the mods
+whose findings this one builds on; add to it (and to `docs/nexus.md`) when a new source shapes
+the code.
 
 The folder name `enemy_item_scaling` is the Python module name, the settings file name
 (`<game>/sdk_mods/settings/enemy_item_scaling.json`) and the required root folder of the `.sdkmod`.
@@ -169,9 +173,14 @@ our `extCompleteConfirmed` hook runs before the reroller's only when our mod was
 is still ReadyToTurnIn, so a turn-in that levels the player rerolls at the new level; the
 vanilla path marks the mission Complete before the XP, so there the item is one level below.
 
-The first three are the exact targets shipped by apple1417's `enemy_level_randomizer` and EdricY's
-Bouncy-Loot-God `always_on_level`; the mission one is hooked by RedxYeti's PayToLoot and its
-`GameStage` write is what BouncyLootGod and Roguelands do before calling it. Raid-boss dedicated
+Where the targets come from: the factory hooks follow galqawala's EnemyBalancer (itself modelled on
+RedxYeti's BL1 Enemy Randomizer); `WillowPawn:SetGameStage` is the one target apple1417's
+`enemy_level_randomizer` ships; the loot and container targets and the intro-chest exclusion come
+from EdricY's Bouncy-Loot-God `always_on_level` (the `MoonShotIntro_P` part from Adaptor-Face); the
+mission grant hook is also hooked by RedxYeti's PayToLoot and its `GameStage` write is what
+BouncyLootGod and Roguelands do before calling it. No code from any of them is in this mod; the
+full credits list, with licences, is in `docs/sdk-notes.md` (Credits and prior art) and the
+README's Credits section. Raid-boss dedicated
 drops, Moxxi tips and slot-machine payouts (`Behavior_SpawnItems`) take their level from the pawn
 or container they come from, so the hooks above cover them. See `docs/sdk-notes.md`.
 

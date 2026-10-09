@@ -555,3 +555,36 @@ on every PR) require, and therefore what must stay true in `pyproject.toml`:
 Both validators passed locally before the PR (`<scratch venv>/bin/python _validate_pyproject.py
 front_matter _willow2_mods/EnemyItemScaling.md`). `_data/reviews.yml` lists manually reviewed
 mods; ours is unreviewed until a bl-sdk reviewer looks at it.
+
+## Credits and prior art (audited 2026-10-09)
+
+Caleb asked whether other mods were used and who to credit. A six-agent audit compared every
+source below against `src/enemy_item_scaling/__init__.py` line by line: no code was copied or
+closely adapted; what was taken is hook target names, game facts and the SDK's documented
+re-call-and-Block idiom, none of which carries a licence obligation. Player-facing credits are in
+the README's Credits section and `docs/nexus.md`; this is the full list.
+
+| Source | Author | Licence | What it gave this mod |
+|---|---|---|---|
+| PythonSDK: willow2-mod-manager, mods_base, pyunrealsdk, unrealsdk | apple1417 and bl-sdk contributors | LGPL-3.0 | the runtime and API; not bundled in the `.sdkmod` (players install it), so LGPL imposes nothing |
+| Enemy Level Randomizer | apple1417 | GPL-3.0 | `WillowPawn:SetGameStage` target, player-pawn skip, the re-call idiom in a shipped mod |
+| Apple's Borderlands Cheats, Vendor Edit | apple1417 | GPL-3.0 | facts: `ResetInventory` restocks a vendor; item level is `ManufacturerGradeIndex` |
+| EnemyBalancer | galqawala | GPL-3.0 | the population-factory spawn hooks behind v0.5; live TPS confirmations |
+| Enemy Randomizer (BL1) | RedxYeti | GPL-3.0 | origin of EnemyBalancer's factory re-invoke technique |
+| Bouncy Loot God | EdricY; `MoonShotIntro_P` exclusion by Adaptor-Face | MIT (metadata only) | loot and container hook targets, intro-chest exclusion, mission `GameStage` write |
+| Borderlands Loot Randomizer | mopioid | none found | where the per-player mission record lives |
+| MapLoader, RogueLands (bl2sdk_Mods) | juso40 | MIT | the factory setup sequence (diagnosed the first bug report); the reward re-level pattern (v0.5/v0.6, a check since v0.7) |
+| Pay To Loot, Random Skill Selector, Ultimate Scavenger | RedxYeti | GPL-3.0 | `ServerGrantMissionRewards` and map-load hooks; the load-time `OnExpLevelChange` call |
+| Reward Reroller | ZetaDaemon | GPL-3.0 | compatibility target; its source set the timing of the mission writes |
+| Helios Tracker research notes | ZooLSmith | GPL-3.0 | in-game probes: mission level locking, XP curve, vending, cutscenes |
+| BL2_ReBased native-analysis notes | zuhuHix and OpenWillow contributors | MIT | mission dispatch and level-up rules (marked unverified by its authors) |
+| bl-py-stubs | Justin99x | none found | dev only: BL2/TPS class and parameter names |
+| BL2-SDK dump | RobChiocchio (after McSimp's Borderlands2SDK) | none found | dev only: function flags, struct layouts |
+| FT/BLCMM Explorer | apocalyptech | BSD-3-Clause | dev only: item pool and vendor data |
+| BLCM wiki, BLCMods | BLCM community | none found | dev only: GameStage scheduling gates, enemy health formulas |
+| Official SDK install guide (bl-sdk.github.io) | bl-sdk contributors | none found | the README install steps are condensed from it, and say so |
+| bl-sdk repos' ruff/pyright config | apple1417 | GPL-3.0 / LGPL-3.0 | the root `pyproject.toml` lint lists are copied verbatim; dev only, never shipped |
+
+Looked at and not used: juso40's ScaledTVHM and BadassBounties, Rossays' Game Scaler, RedxYeti's
+Projectile Randomizer. If code from any GPL source is ever copied in, the mod would have to be
+GPL-3.0; keep borrowing ideas and facts, not code.

@@ -1,6 +1,6 @@
 # Enemy and Item Scaling (BL2 & TPS)
 
-> This mod was made with the help of AI (Claude Code). The code and docs were written with it,
+> This mod was made with AI (Claude Code). The code and docs were written with it,
 > under my direction.
 
 An SDK mod for Borderlands 2 and Borderlands: The Pre-Sequel that scales enemies, loot and
@@ -136,6 +136,29 @@ which is the place to look if anything here is out of date.
 
 The mod's source is `src/enemy_item_scaling/`. Notes on the SDK, the hooks used, prior art and
 the dev loop are in [docs/](docs/), starting with [docs/development.md](docs/development.md).
+
+## Credits
+
+No code from other mods is included, but this one builds on what they figured out:
+
+- [apple1417](https://github.com/apple1417) and the bl-sdk contributors, for the
+  [PythonSDK](https://github.com/bl-sdk/willow2-mod-manager) this runs on, and apple1417's
+  [Enemy Level Randomizer](https://github.com/apple1417/willow2-sdk-mods/tree/master/enemy_level_randomizer).
+- galqawala's [EnemyBalancer](https://github.com/galqawala/EnemyBalancer), whose spawn hooks set
+  enemy levels, a technique from RedxYeti's
+  [Enemy Randomizer](https://github.com/RedxYeti/Yeti-BL1-SDK-Mods/tree/main/EnemyRandomizer).
+- EdricY's [Bouncy Loot God](https://github.com/EdricY/Bouncy-Loot-God) for the loot and chest
+  hooks, and [Adaptor-Face](https://github.com/Adaptor-Face) for finding the intro chests that
+  break when lowered.
+- mopioid's [Loot Randomizer](https://github.com/mopioid/Borderlands-Loot-Randomizer), juso40's
+  [MapLoader and RogueLands](https://github.com/juso40/bl2sdk_Mods), and RedxYeti's
+  [Pay To Loot, Random Skill Selector](https://github.com/RedxYeti/bl2-willow2-sdkmods) and
+  [Ultimate Scavenger](https://github.com/RedxYeti/Yeti-BL2-SDK-Mods/tree/main/UltimateScavengerMod),
+  for how missions, rewards and level-ups work.
+- ZooLSmith's [Helios Tracker](https://github.com/ZooLSmith/helios-tracker) and zuhuHix's
+  [BL2_ReBased](https://github.com/zuhuHix/BL2_ReBased) research notes.
+- Works alongside ZetaDaemon's
+  [Reward Reroller](https://github.com/ZetaDaemon/bl-sdk-mods/tree/main/RewardReroller).
 
 ## Changelog
 

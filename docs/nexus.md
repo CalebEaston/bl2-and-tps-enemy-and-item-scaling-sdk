@@ -66,11 +66,24 @@ This is an SDK mod, not a BLCMM text mod. If you've never used one:
 
 A step-by-step version with troubleshooting is in the [url=https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk#installation]README on GitHub[/url].
 
+[size=4][b]Credits[/b][/size]
+
+No code from other mods is included, but this one builds on what they figured out:
+
+[list]
+[*]apple1417 and the bl-sdk contributors, for the [url=https://github.com/bl-sdk/willow2-mod-manager]PythonSDK[/url] this runs on, and apple1417's [url=https://github.com/apple1417/willow2-sdk-mods/tree/master/enemy_level_randomizer]Enemy Level Randomizer[/url].
+[*]galqawala's [url=https://github.com/galqawala/EnemyBalancer]EnemyBalancer[/url], whose spawn hooks set enemy levels, a technique from RedxYeti's [url=https://github.com/RedxYeti/Yeti-BL1-SDK-Mods/tree/main/EnemyRandomizer]Enemy Randomizer[/url].
+[*]EdricY's [url=https://github.com/EdricY/Bouncy-Loot-God]Bouncy Loot God[/url] for the loot and chest hooks, and Adaptor-Face for finding the intro chests that break when lowered.
+[*]mopioid's [url=https://github.com/mopioid/Borderlands-Loot-Randomizer]Loot Randomizer[/url], juso40's [url=https://github.com/juso40/bl2sdk_Mods]MapLoader and RogueLands[/url], and RedxYeti's [url=https://github.com/RedxYeti/bl2-willow2-sdkmods]Pay To Loot, Random Skill Selector[/url] and [url=https://github.com/RedxYeti/Yeti-BL2-SDK-Mods/tree/main/UltimateScavengerMod]Ultimate Scavenger[/url], for how missions, rewards and level-ups work.
+[*]ZooLSmith's [url=https://github.com/ZooLSmith/helios-tracker]Helios Tracker[/url] and zuhuHix's [url=https://github.com/zuhuHix/BL2_ReBased]BL2_ReBased[/url] research notes.
+[*]Works alongside ZetaDaemon's [url=https://github.com/ZetaDaemon/bl-sdk-mods/tree/main/RewardReroller]Reward Reroller[/url].
+[/list]
+
 [size=4][b]Notes[/b][/size]
 
 [list]
 [*]Source code and issue tracker: [url=https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk]GitHub[/url]
-[*]This mod was made with the help of AI (Claude Code), under my direction.
+[*]This mod was made with AI (Claude Code), under my direction.
 [*]New mod, not everything is tested yet. If something looks off, leave a comment here or open an issue on GitHub. Even a one-liner about what you were doing helps. Pre-Sequel support is new in v0.6 and hasn't been play-tested yet, so reports from there are especially welcome.
 [/list]
 ```

@@ -385,6 +385,31 @@ def _level_mission(mission: UObject, pc: UObject) -> None:
     mission.bGameStageLocked = True
 
 
+@hook("WillowGame.QuestAcceptGFxMovie:UpdateMissionList", Type.POST)
+@hook("WillowGame.QuestAcceptGFxMovie:DetermineQuestEntries", Type.POST)
+@hook("WillowGame.QuestAcceptGFxMovie:extPopulateQuestEntries", Type.POST)
+def on_mission_list_updated(
+    obj: UObject,
+    _args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Levels every accepted mission in an NPC's mission list as soon as the list is built.
+
+    This happens before anything can be turned in, whichever order other mods' hooks run in,
+    which is what makes mods that roll rewards themselves (Reward Reroller) see the level.
+    """
+    if not on_level_mission_rewards.value:
+        return
+    pc = obj.WPCOwner
+    if pc is None:
+        return
+    for entry in obj.MissionList:
+        if int(entry.MissionStatus) in MISSION_ACCEPTED_STATUSES and entry.MissionDef is not None:
+            _level_mission(entry.MissionDef, pc)
+
+
 @hook("WillowGame.QuestAcceptGFxMovie:SetRewardCard")
 def on_reward_card(
     _obj: UObject,
@@ -416,7 +441,12 @@ def on_complete_confirmed(
     _ret: Any,
     _func: BoundFunction,
 ) -> None:
-    """Backstop for the reward card hook: levels the mission as the turn-in is confirmed."""
+    """
+    Backstop: levels the mission as the turn-in is confirmed.
+
+    Only beats another mod's hook on the same function if ours registered first (true when
+    both were enabled at launch), so the mission-list hook above is the one to rely on.
+    """
     if not on_level_mission_rewards.value:
         return
     pc = obj.WPCOwner
@@ -449,21 +479,55 @@ def on_grant_mission_rewards(
     _level_mission(mission, obj)
 
 
-@hook("WillowGame.WillowPlayerController:MissionRewardsReceived", Type.POST)
+def _restore_mission(mission: UObject) -> None:
+    """
+    Puts a mission's stage back to what the game had, if we changed it.
+
+    Args:
+        mission: The MissionDefinition.
+    """
+    saved = _saved_mission_stages.pop(mission._path_name(), None)
+    if saved is None:
+        return
+    mission.GameStage, mission.bGameStageLocked = saved
+
+
+# EMissionStatus.MS_Complete
+MISSION_COMPLETE = 4
+
+
+@hook("WillowGame.WillowPlayerController:MissionRewardsReceived", Type.POST_UNCONDITIONAL)
 def on_mission_rewards_received(
     _obj: UObject,
     args: WrappedStruct,
     _ret: Any,
     _func: BoundFunction,
 ) -> None:
-    """Puts the mission's stage back once the player has taken the reward (rerolls included)."""
+    """Restores the mission once the player has taken the reward (rerolls included)."""
     mission = args.Mission
-    if mission is None:
+    if mission is not None:
+        _restore_mission(mission)
+
+
+@hook("WillowGame.WillowPlayerController:UpdateMissionStatus", Type.POST_UNCONDITIONAL)
+def on_mission_status_updated(
+    _obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Restores the mission when it is marked complete.
+
+    In the vanilla flow this fires before the reward roll, and the ServerGrantMissionRewards
+    hook simply levels the mission again; with Reward Reroller it fires when the reward is
+    accepted, after the rolls. Either way nothing is left levelled once the mission is done.
+    """
+    if int(args.NewMissionStatus) != MISSION_COMPLETE:
         return
-    saved = _saved_mission_stages.pop(mission._path_name(), None)
-    if saved is None:
-        return
-    mission.GameStage, mission.bGameStageLocked = saved
+    mission = args.Mission
+    if mission is not None:
+        _restore_mission(mission)
 
 
 mod = build_mod(

@@ -237,14 +237,26 @@ returns for a locked mission is the `GameStage` field (prior-art claim, helios i
 the field write is the only lever, and it must land before the reroller's hook runs.
 
 v0.4 design: `_level_mission(mission, pc)` writes `GameStage` + `bGameStageLocked` (saving the
-original with `setdefault`). Called from PRE `QuestAcceptGFxMovie:SetRewardCard(MissionDef, WPC)`
+original with `setdefault`). Primary trigger: POST hooks on `QuestAcceptGFxMovie:UpdateMissionList`
+(script, optional `OnlyIfThisMissionIsAlreadyInTheList`), `:DetermineQuestEntries` and
+`:extPopulateQuestEntries`, iterating `obj.MissionList[]` (`StatusMenuMissionEligibilityData`:
+`MissionDef`, `MissionStatus`, `bIsBlocked`, `bIsFiltered`) and levelling entries with status
+1/2/3 for `obj.WPCOwner`; this runs when the NPC's list is built, before any turn-in, and does
+not depend on hook order (verifier suggestion; which of the three fills the list is unverified,
+hence all three). Second trigger: PRE `QuestAcceptGFxMovie:SetRewardCard(MissionDef, WPC)`
 (script, flags 0x00040003) when `pc.GetPlayersMissionStatus(mission)` is Active (1),
 RequiredObjectivesComplete (2) or ReadyToTurnIn (3); from PRE `QuestAcceptGFxMovie:
 extCompleteConfirmed` as a backstop (mission = `obj.MissionList[obj.GetSelectedIndex()].MissionDef`,
 player = `obj.WPCOwner`, the same fields the reroller reads); and from PRE
-`ServerGrantMissionRewards` for scripted completions. Restored in POST
-`WillowPlayerController:MissionRewardsReceived(Mission)` (script, 0x00020103), i.e. after the
-reward is accepted, so rerolls in between still read the player's level. Open: whether
+`ServerGrantMissionRewards` for scripted completions. Restored (POST_UNCONDITIONAL) in
+`WillowPlayerController:MissionRewardsReceived(Mission)` (script, 0x00020103, i.e. after the
+reward is accepted, so rerolls in between still read the player's level) and in the
+`WillowPlayerController:UpdateMissionStatus(Mission, NewMissionStatus)` event when the status
+becomes Complete (4): vanilla marks Complete before the roll (the grant hook re-levels right
+after), the reroller marks Complete at accept input after its rolls. Verifier (2026-10-08)
+could not refute the design; it rated the field-read-when-locked link medium-high (Ghidra +
+helios XP sweep) and flagged co-op as unverified (host's shared mission object may carry a
+client's level; restore is Simulated so the host never restores a client's turn-in). Open: whether
 `SetRewardCard` is called for the turn-in screen (it is the movie that handles both accept and
 complete) and whether `MissionRewardsReceived` fires on the reroller's accept path (if not, the
 stage simply stays at the player's level; harmless). `EMissionStatus`: NotStarted 0, Active 1,

@@ -111,10 +111,14 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 | `WillowGame.WillowPawn:SetGameStageForSpawnedInventory` and `WillowAIPawn:` same | `NewInventoryGameStage` | level of an enemy's drops |
 | `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band); vending machines (vendor toggle) |
 | `WillowGame.WillowVendingMachine:ResetInventory` | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
-| `WillowGame.QuestAcceptGFxMovie:SetRewardCard` (PRE) | `MissionDef`, `WPC`; writes `MissionDef.GameStage` + `bGameStageLocked` if status in {Active, RequiredObjectivesComplete, ReadyToTurnIn} | levels the mission when its reward card shows, before any turn-in |
-| `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; mission from `obj.MissionList[obj.GetSelectedIndex()].MissionDef`, player `obj.WPCOwner` | backstop at the turn-in confirm |
-| `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE) | `Mission`, `bGrantAltReward`; same write | scripted completions with no reward card; expected once per player on the host, untested in co-op |
-| `WillowGame.WillowPlayerController:MissionRewardsReceived` (POST) | `Mission`; restores the saved stage | after the reward is taken, so rerolls in between still see the player's level |
+| `WillowGame.QuestAcceptGFxMovie:UpdateMissionList` / `:DetermineQuestEntries` / `:extPopulateQuestEntries` (POST) | iterate `obj.MissionList[]` (`MissionDef`, `MissionStatus`), player `obj.WPCOwner` | primary: levels every accepted mission (status 1/2/3) when an NPC's list is built, before any turn-in, order-independent |
+| `WillowGame.QuestAcceptGFxMovie:SetRewardCard` (PRE) | `MissionDef`, `WPC`; same write if status in {1,2,3} | second trigger when a reward card shows |
+| `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; mission from `obj.MissionList[obj.GetSelectedIndex()].MissionDef`, player `obj.WPCOwner` | backstop at the turn-in confirm; only beats the reroller's hook if ours registered first |
+| `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE) | `Mission`, `bGrantAltReward`; same write | scripted completions with no UI; expected once per player on the host, untested in co-op |
+| `WillowGame.WillowPlayerController:MissionRewardsReceived` (POST_UNCONDITIONAL) and `:UpdateMissionStatus` (POST_UNCONDITIONAL, when `NewMissionStatus == 4` Complete) | `Mission`; restores the saved stage | after the reward is taken / the mission completes; in the vanilla flow Complete comes before the roll and the grant hook re-levels |
+
+All of this is single-player / host-side; in co-op the shared mission object can end up at
+another player's level (documented, untested).
 
 Reward Reroller (legacy mod the user plays with) blocks `ServerGrantMissionRewards` and
 `MissionTracker:CompleteMission` and grants rewards itself from a PRE hook on

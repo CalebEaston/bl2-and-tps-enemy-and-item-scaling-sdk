@@ -327,3 +327,95 @@ toggle was on is unconfirmed):
   the old stage; mopioid ships the same grade/stage rewrite, so the item is valid. Reward
   Reroller grants its items without `ReceiveWeaponReward`, and other legacy mods' direct calls
   bypass hooks, so this net only sees the vanilla accept path.
+
+## v0.6 (2026-10-09): The Pre-Sequel
+
+Request: make the mod work in Borderlands: The Pre-Sequel. The SDK stack is shared
+(willow2-mod-manager serves BL2, TPS and AoDK from one zip; `mods_base.Game.get_current()` maps
+`borderlandspresequel.exe` to `Game.TPS`). What actually blocked TPS, and what was checked, all
+against the game-generated stubs (`Justin99x/bl-py-stubs` `gamestubs.zip`, which has `bl2/`,
+`tps/` and `common/` trees and no AoDK tree) plus galqawala's EnemyBalancer, which runs the same
+factory hooks in TPS and logged live confirmations there (2026-08-23). An adversarial review
+(five verifiers, SDK source included) checked every claim below; nothing has been played in TPS.
+
+- `[tool.sdkmod] supported_games = ["BL2"]` was the real blocker: `mods_base.Mod.__post_init__`
+  sets `enabling_locked = Game.get_current() not in supported_games`, the mod menu shows the mod
+  as yellow `Incompatible` and `enable()` returns early. Now `["BL2", "TPS"]`.
+- `WillowPlayerController.OverpowerChoiceValue` does not exist in TPS (the class has
+  `NumOverpowerLevelsUnlocked`, nothing else Overpower-related; 0 matches in the `tps/` and
+  `common/` trees). `player_level_for` read it whenever `GetCurrentPlaythrough()` was UVHM, which
+  for a TPS UVHM character would raise `AttributeError` (pyunrealsdk `UObject.__getattr__` ->
+  `py_find_field` -> `py::attribute_error`) inside every hook, making the mod a no-op for that
+  character (Normal and TVHM never took the branch). Guarded by `has_overpower_levels()`, which
+  looks the property up once with `UClass._find_prop` (ValueError when missing: unrealsdk's
+  `UStruct::find*` throw `std::invalid_argument`, pybind11 maps that to ValueError). Field
+  presence rather than `Game.get_current()`, because the latter logs an error and assumes BL2
+  for an unknown executable name, and because AoDK (the BL2 build) presumably has the field.
+- Every hook target exists in TPS with the same parameter names: both factory events (TPS's
+  `CreatePopulationActor` has an extra optional `SpawnOwner` parameter at the end; we re-call
+  `func(args)` with the struct, so it is passed through untouched; EnemyBalancer confirmed both
+  `CreatePopulationActor` and `RestorePopulatedAIPawn` fire in TPS), `WillowPawn:SetGameStage`,
+  `WillowAIPawn:SetExpLevel` (redeclared in TPS as in BL2), both
+  `SetGameStageForSpawnedInventory`, `WillowInteractiveObject:SetGameStage`,
+  `WillowVendingMachine:ResetInventory`, the three `QuestAcceptGFxMovie` list functions,
+  `SetRewardCard`, `extCompleteConfirmed`, `GetSelectedIndex`, `ServerGrantMissionRewards`,
+  `ReceiveWeaponReward`/`ReceiveItemReward` (same out `DefinitionData`),
+  `WillowClientDisableLoadingMovie`, `MissionRewardsReceived`, `UpdateMissionStatus`,
+  `NativeGetMissionIndex`, `GetCurrentPlaythrough`, `GetPlayersMissionStatus`. Fields:
+  `MissionPlaythroughs` (TPS's `MissionPlaythroughData` has extra members but `MissionList` is
+  still there), `MissionStatusPlayerData.GameStage`, `MissionDefinition.GameStage` /
+  `bGameStageLocked`, `QuestAcceptGFxMovie.MissionList`, `PawnBalanceDefinition`,
+  `WeaponDefinitionData` / `ItemDefinitionData.ManufacturerGradeIndex` + `GameStage`.
+  `AIPawnBalanceDefinition` (`Grades`, `DefaultExpLevel`, `GetPawnArchetype`) is identical in
+  both games and `PopulationFactoryBalancedAIPawn` differs only by an extra `GetMaxExtent` in
+  TPS; neither has `GetPawnArchetypeForGrade`, so the no-fallback factory hook holds in TPS too.
+- TPS mission API differences the mod does not use: `MissionDefinition.GetExpectedGameStage()`
+  is BL2 only; TPS adds `GetMissionLevel(TestingWillowPC, bIncludeLevelAdjustment)`, an int
+  `LevelAdjustment` field, `GetBadassRanksReward`, `GetOtherCurrencyReward`,
+  `GetItemRewardInvPools`. The mod writes `GameStage` only; if TPS's reward roll goes through
+  `GetMissionLevel(pc, True)` = stage + adjustment, a reward can sit `LevelAdjustment` above the
+  mission's level by design. Probe in `docs/testing.md` section 9.
+- TPS-only object that matters: `WillowVendingMachineShift` (the SHiFT machine in Concordia)
+  inherits `WillowInteractiveObject` directly, not `WillowVendingMachineBase`, and has its own
+  `ResetInventory`, `GenerateGambleItemList`, `GetGambleItemOfTheDay`, `MaxGambleItems`;
+  spawned by `PopulationFactoryVendingMachineShift` (`CreateInteractiveObject`). Without special
+  handling the item band would treat it as a container. It is now classified as a vendor by name
+  (`OPTIONAL_VENDOR_CLASS_NAMES`, looked up with `find_class` and skipped where the class doesn't
+  exist; the required `WillowVendingMachineBase` is looked up outside the try so a typo still
+  shows as a traceback) and its `ResetInventory` is hooked next to the ordinary one. Whether its
+  factory calls `SetGameStage` at spawn, whether the shipped game exposes the gamble stock at all
+  and whether that stock follows the stage are all unknown (nothing in
+  `WillowShiftGambleInventoryDefinition` / `WillowShiftGambleItemDefinition` mentions a stage or
+  level; no local source names its currency); harmless either way.
+- Other `WillowInteractiveObject` subclasses only TPS has: `OzSupportDrone` (Wilhelm's Wolf and
+  Saint) and `OzPlayerJumpPad`. Neither declares loot or stage members of its own; if the game
+  ever calls `SetGameStage` on one, the item band would clamp it and log `container`. Left
+  alone (a value at the player's level is always inside the band); watched in section 9.
+- The grinder is `GrinderGFxMovie` + `GrinderRecipeDefinition` + `GrinderRecipe`; by the stub
+  signatures (`GetGrindItemDefinitions(out ..., out TotalItemExpLevel, out TotalItemAwesomeLevel,
+  ...)` feeding `GrinderRecipe.SpawnBalancedInventoryFromRecipe(TotalItemExpLevel, ...)`, no
+  `GameStage` anywhere in the three classes) its output is levelled from the ingredients, so
+  there is nothing to hook and the item floor never applies to it; unverified in-game. Also
+  outside every hook in TPS: SHiFT machine rewards (`GetEntitlementLoot`,
+  `ServerAwardItemRewardEarned`) and scripted weapon grants (`Behavior_SpawnWeapon*`).
+- Intro-map containers: Bouncy Loot God's `always_on_level.py` refuses to lower an interactive
+  object whose path starts with `MoonShotIntro_P.TheWorld` ("no loot in at least 1 chest") and
+  likewise `Xmas_P.TheWorld` in BL2. v0.6 mirrors that: `on_interactive_object_game_stage` skips
+  a lowering when `obj._path_name()` starts with `Xmas_P.` or `MoonShotIntro_P.`; raising is
+  unaffected.
+- Hooks on functions the running game doesn't have: `unrealsdk`'s `hook_manager.cpp add_hook`
+  only inserts the entry into a table keyed by the function's object name (no object lookup,
+  nothing that throws); matching happens when a function is called, by name and then full path.
+  So `WillowVendingMachineShift:ResetInventory` registered in BL2 is inert, and the other target
+  stacked on the same callback still matches. `HookType.get_active_count()` counts registrations
+  (`has_hook`), so it reports the dead target as active; only resolving the function object
+  proves it exists. `Mod.enable()` has no per-hook error isolation, so nothing that can raise may
+  ever go into the hook-enable path.
+- `unrealsdk.find_class` with a short name consults the SDK's class cache, filled once from
+  `GObjects` on first use; a class loaded later (a script class from a DLC package) is only found
+  through the fully-qualified form. Fine for the native WillowGame classes used here.
+- Still Borderlands 2 wording that is correct for both: `UVHM_PLAYTHROUGH = 2` (TPS also has
+  Normal/TVHM/UVHM), level caps are never hard-coded, `WillowPlayerPawn` exists in TPS.
+- Not done: AoDK (probably the BL2 build, no stubs checked; `"AoDK"` in `supported_games` is
+  probably the only change), TPS enemy vehicles, any in-game run. `docs/testing.md` section 9 is
+  the first-run list.

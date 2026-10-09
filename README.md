@@ -3,13 +3,14 @@
 > This mod was made with the help of AI (Claude Code). The code and docs were written with it,
 > under my direction.
 
-A Borderlands 2 SDK mod that scales enemies and loot to your level.
+An SDK mod for Borderlands 2 and Borderlands: The Pre-Sequel that scales enemies and loot to
+your level.
 
 **[Download the latest release](https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk/releases/latest)**,
 drop `enemy_item_scaling.sdkmod` into your `sdk_mods` folder, restart the game. First time using SDK
 mods? See [Installation](#installation).
 
-Outside of UVHM, Borderlands 2 gives every area a fixed level range. Once you've out-levelled an
+Outside of UVHM, both games give every area a fixed level range. Once you've out-levelled an
 area, everything in it is stuck behind you: the enemies die in a shot or two and nothing they drop
 is worth picking up. This mod puts a band around your level and keeps enemies and loot inside it.
 Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the loot he drops.
@@ -21,7 +22,8 @@ gear they drop on your level.
 
 This is a new mod and I haven't been able to test everything, so if something looks off, leave a
 comment or [open an issue](https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk/issues).
-Even a one-liner about what you were doing helps.
+Even a one-liner about what you were doing helps. Pre-Sequel support is new in v0.6 and hasn't
+been play-tested yet, so reports from there are especially welcome.
 
 ## Options
 
@@ -34,7 +36,8 @@ The four level bounds take `Vanilla`, `Player Level`, or `Within 1` to `Within 1
 - **Maximum Item Level** - loot above this is lowered to it
 
 An enemy that gets raised or lowered drops loot at its new level, and the item settings apply on
-top of that.
+top of that. In The Pre-Sequel the Grinder is left alone: its output takes its level from the
+items you feed it.
 
 Two on/off switches:
 
@@ -46,12 +49,13 @@ And **Log Adjustments** prints each change to the console.
 
 Everything starts off or on `Vanilla`. Each setting works on its own. In co-op only the
 host's settings matter. Enemies already alive when you level up keep their level until they
-respawn.
+respawn. Each game keeps its own copy of the settings.
 
 ## Installation
 
-This is an SDK mod, not a BLCMM text mod, so it needs the PythonSDK installed once. If you have
-never used SDK mods, follow all three parts in order.
+This is an SDK mod, not a BLCMM text mod, so it needs the PythonSDK installed once. The same SDK
+and the same mod file work for Borderlands 2 and The Pre-Sequel; install them into whichever game
+you want, or both. If you have never used SDK mods, follow all three parts in order.
 
 ### 1. Install the PythonSDK (once)
 
@@ -59,13 +63,14 @@ These steps are condensed from the official guide at https://bl-sdk.github.io/wi
 which is the place to look if anything here is out of date.
 
 1. Install the latest [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x86.exe)
-   (x86, since Borderlands 2 is a 32-bit game).
+   (x86, since both games are 32-bit).
 2. Download `willow2-sdk.zip` from the latest release at
    https://github.com/bl-sdk/willow2-mod-manager/releases/latest . Do not download the
    "Source code" links.
-3. Find your game folder. In Steam, right-click Borderlands 2, then `Manage` > `Browse local files`.
-   The defaults are `C:\Program Files (x86)\Steam\steamapps\common\Borderlands 2` for Steam and
-   `C:\Program Files\Epic Games\Borderlands 2` for Epic.
+3. Find your game folder. In Steam, right-click the game, then `Manage` > `Browse local files`.
+   The Steam defaults are `C:\Program Files (x86)\Steam\steamapps\common\Borderlands 2` and
+   `C:\Program Files (x86)\Steam\steamapps\common\BorderlandsPreSequel`; on Epic, Borderlands 2
+   is at `C:\Program Files\Epic Games\Borderlands 2`.
 4. Extract the zip directly into that game folder so its contents merge with what is there. Say yes
    to overwriting. You should now have `<game>\sdk_mods` and
    `<game>\Binaries\Win32\Plugins\unrealsdk.dll`.
@@ -97,8 +102,8 @@ which is the place to look if anything here is out of date.
 
 ### Requirements
 
-- Borderlands 2 (the Windows build; on Linux it runs through Proton as above). All DLC is fine but
-  not required.
+- Borderlands 2 or Borderlands: The Pre-Sequel (the Windows builds; on Linux they run through
+  Proton as above). All DLC is fine but not required.
 - PythonSDK / Willow2 Mod Manager v3.8 or newer.
 - Microsoft Visual C++ Redistributable (x86).
 - No other mods are required.
@@ -109,13 +114,14 @@ which is the place to look if anything here is out of date.
   one folder too deep or too shallow if not), then reinstall the Visual C++ Redistributable.
 - **Game crashes on launch after installing the SDK:** install the latest Visual C++
   Redistributable. On Proton, `-pf_tricks=vcrun2022` in the launch options does this; failing that,
-  run `protontricks 49520 vcrun2022`.
+  run `protontricks 49520 vcrun2022` for Borderlands 2 or `protontricks 261640 vcrun2022` for
+  The Pre-Sequel.
 - **The mod isn't in the list:** make sure the file is `sdk_mods\enemy_item_scaling.sdkmod` or the
   folder is `sdk_mods\enemy_item_scaling\`, then restart the game. Errors while loading mods are
   written to `<game>\Binaries\Win32\Plugins\unrealsdk.log`.
 - **Want to see it working:** turn on `Log Adjustments`, open the console (press the tilde key
-  twice) and watch for `[Enemy and Item Scaling] enemy ...: 5 -> 15 (player 15)` lines as enemies
-  spawn.
+  twice) and watch for `[Enemy and Item Scaling] spawn PawnBalance_...: 5 -> 15 (player 15)`
+  lines as enemies spawn.
 - **More help:** the SDK's [Modding Support Discord](https://discord.gg/bXeqV8Ef9R).
 
 ## For modders

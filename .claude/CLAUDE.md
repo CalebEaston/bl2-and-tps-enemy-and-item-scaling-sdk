@@ -1,8 +1,9 @@
-# Enemy and Item Scaling (BL2 PythonSDK mod)
+# Enemy and Item Scaling (BL2 / TPS PythonSDK mod)
 
-A Borderlands 2 mod for the **new** PythonSDK stack (willow2-mod-manager v3.8 / pyunrealsdk /
-`mods_base` 1.12, embedded Python 3.14). The legacy PythonSDK (`Mods.ModMenu`, `BL2MOD`) is archived
-and is NOT what this targets.
+A Borderlands 2 and Borderlands: The Pre-Sequel mod for the **new** PythonSDK stack
+(willow2-mod-manager v3.8 / pyunrealsdk / `mods_base` 1.12, embedded Python 3.14; one SDK zip and
+one `.sdkmod` serve both games). The legacy PythonSDK (`Mods.ModMenu`, `BL2MOD`) is archived and
+is NOT what this targets. TPS support is declared since v0.6 (2026-10-09) and is unplayed so far.
 
 ## What the mod does
 
@@ -15,7 +16,9 @@ Four spinner options, each `Vanilla` | `Player Level` | `Within 1 Level` ... `Wi
 | Minimum Item Level | no floor | item level raised to at least `player - N` |
 | Maximum Item Level | no cap | item level lowered to at most `player + N` |
 
-`player` = `PlayerReplicationInfo.ExpLevel`, plus `OverpowerChoiceValue` in UVHM only. Item bounds
+`player` = `PlayerReplicationInfo.ExpLevel`, plus `OverpowerChoiceValue` in BL2 UVHM only (TPS has
+no OP levels and no such field; `has_overpower_levels()` looks the field up on the class once and
+guards the read). Item bounds
 work without enemy bounds (vanilla enemies, on-level loot); a clamped enemy drops loot at its
 clamped level with the item band applied on top. Two `BoolOption`s (v2): `On-Level Mission
 Rewards` (the mission's stage is set to the player turning it in before its rewards, XP and cash
@@ -23,7 +26,9 @@ are rolled: the definition's transient stage from every trigger, the player's sa
 the grant hook since that copy goes into the save file; a reward item is re-levelled as it is
 taken if it still isn't on level) and
 `On-Level Vendors` (vending machines are set to the player's level when they spawn and before
-they restock; vendors are excluded from the item band). `Log Adjustments` prints every change.
+they restock; vendors are excluded from the item band; in TPS the Concordia SHiFT machine,
+`WillowVendingMachineShift`, a plain `WillowInteractiveObject`, counts as a vendor too).
+`Log Adjustments` prints every change.
 
 Current priority: **get a working version in-game first, then patch**. Don't over-engineer for
 compatibility yet; see "Later" at the bottom for the compatibility work that is deferred. Keep it
@@ -75,6 +80,16 @@ go at the repo root, not under `src/`.
 - Python file content stays ASCII (ruff RUF001/RUF003 flag en dashes and curly quotes). No `TODO`
   comments in code (ruff TD/FIX rules); put open items in `docs/sdk-notes.md`.
 - Use `unrealsdk.logging.info/warning/error`, never `print`. `dev_warning` is hidden in-game.
+- Both games: `[tool.sdkmod] supported_games` must list `"BL2"` and `"TPS"`, or `mods_base` shows
+  the mod as `Incompatible` and locks the enable toggle in the missing game. Every hook target
+  and field used here exists in both games with the same parameter names (checked against the
+  game-generated stubs, see `docs/sdk-notes.md` v0.6). Anything game-specific is detected by
+  looking for the class or field itself, not via `Game.get_current()` (which assumes BL2 for an
+  unknown executable name): `has_overpower_levels()` uses `UClass._find_prop` (ValueError when
+  missing), `_vendor_classes()` uses `unrealsdk.find_class` (ValueError when missing; with a
+  short name it only sees classes present when the SDK first filled its class cache, so use it
+  for native WillowGame classes only). A hook on a function the running game doesn't have is
+  harmless and simply never fires (`unrealsdk` matches hooks by the called function's name).
 
 ## Dev loop
 
@@ -91,7 +106,9 @@ npx --yes pyright src
 In-game (the game is NOT installed on this dev machine; it runs elsewhere via Steam/Proton):
 
 1. Install the SDK release zip into the game folder (gives `<game>/sdk_mods` and
-   `<game>/Binaries/Win32/Plugins/`).
+   `<game>/Binaries/Win32/Plugins/`). `<game>` is `.../steamapps/common/Borderlands 2` (Steam app
+   49520) or `.../steamapps/common/BorderlandsPreSequel` (261640); the steps below are the same
+   for both, and each game keeps its own `sdk_mods/settings/enemy_item_scaling.json`.
 2. Create `<game>/Binaries/Win32/Plugins/unrealsdk.user.toml` pointing at this repo's `src/`, so no
    copying is needed (Windows path as seen by Wine; `Z:` is the default mapping of `/`):
    ```toml
@@ -114,8 +131,8 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 | `WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor` and `:RestorePopulatedAIPawn` (PRE) | `GameStage`; re-call `func(args)`, return `(Block, spawned)` (no fallback: `prevent_hooking_direct_calls` doesn't cover the factory's nested setter calls, so a retry at the original stage would be re-clamped by the safety nets anyway) | primary enemy path: the factory passes this one argument to `SetGameStage`, `SetExpLevel` (nameplate; the input of the health/damage formulas) and `SetGameStageForSpawnedInventory`, so clamping it moves all three |
 | `WillowGame.WillowPawn:SetGameStage` and `WillowGame.WillowAIPawn:SetExpLevel` | `NewGameStage` / `NewExpLevel` | safety nets for pawns that skip the factory; no-ops after the factory hook. A `SetGameStage`-only hook (v0.1-v0.4) left enemies at their vanilla nameplate/health with on-level drops |
 | `WillowGame.WillowPawn:SetGameStageForSpawnedInventory` and `WillowAIPawn:` same | `NewInventoryGameStage` | level of an enemy's drops (a clamped enemy's drops follow its clamped level; the item band applies on top) |
-| `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band); vending machines (vendor toggle) |
-| `WillowGame.WillowVendingMachine:ResetInventory` | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
+| `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band; never lowered when the object path starts with `Xmas_P.` or `MoonShotIntro_P.`, where Bouncy Loot God found a chest that spawns nothing when down-levelled); vending machines (vendor toggle) |
+| `WillowGame.WillowVendingMachine:ResetInventory` and `WillowGame.WillowVendingMachineShift:ResetInventory` (TPS only; never fires in BL2) | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
 | `WillowGame.QuestAcceptGFxMovie:UpdateMissionList` / `:DetermineQuestEntries` / `:extPopulateQuestEntries` (POST) | iterate `obj.MissionList[]` (`MissionDef`, `MissionStatus`), player `obj.WPCOwner` | primary: levels every accepted mission (status 1/2/3) when an NPC's list is built, before any turn-in, order-independent |
 | `WillowGame.QuestAcceptGFxMovie:SetRewardCard` (PRE) | `MissionDef`, `WPC`; same write if status in {1,2,3} | second trigger when a reward card shows |
 | `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; mission from `obj.MissionList[obj.GetSelectedIndex()].MissionDef`, player `obj.WPCOwner` | backstop at the turn-in confirm; only beats the reroller's hook if ours registered first |
@@ -160,3 +177,13 @@ or container they come from, so the hooks above cover them. See `docs/sdk-notes.
 - Out of scope by decision (2026-10-08): re-levelling enemies that are already alive when the
   player levels up. They keep their spawn level until they respawn.
 - Local unit tests for `clamp_level` (needs a conftest that stubs `mods_base`/`unrealsdk`).
+- Assault on Dragon Keep standalone (`Game.AoDK`, `tinytina.exe`): believed to be the BL2 build,
+  so `"AoDK"` in `supported_games` is probably the whole change (the Overpower read is decided by
+  field presence, so it needs no change), but the stub zip has no AoDK tree and nothing was
+  checked; not declared because nobody has asked.
+- TPS enemy vehicles, the SHiFT machine's gamble stock (whether the shipped game exposes it and
+  whether it follows the stage are unknown), Wilhelm's `OzSupportDrone` / `OzPlayerJumpPad` (plain
+  interactive objects the item band would log as `container` if the game ever sets their stage),
+  and TPS's `MissionDefinition.LevelAdjustment` / `GetMissionLevel(pc, bIncludeLevelAdjustment)`
+  (BL2 has neither; the mod writes `GameStage` only): same "wait for a report" status as BL2
+  vehicles, with the checks listed in `docs/testing.md` section 9.

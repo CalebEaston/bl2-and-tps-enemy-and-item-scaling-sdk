@@ -99,9 +99,27 @@ def clamp_level(
 UVHM_PLAYTHROUGH = 2
 
 
+@cache
+def has_overpower_levels() -> bool:
+    """
+    Whether this game has Overpower levels.
+
+    They are a Borderlands 2 feature: The Pre-Sequel's player controller has no
+    OverpowerChoiceValue field at all, and reading it there would raise inside every hook. The
+    field itself is looked for, rather than asking which game is running, so an unrecognised
+    executable name (which the SDK treats as Borderlands 2) can't make the mod read a field that
+    isn't there.
+    """
+    try:
+        unrealsdk.find_class("WillowPlayerController")._find_prop("OverpowerChoiceValue")
+    except ValueError:
+        return False
+    return True
+
+
 def player_level_for(pc: UObject) -> int | None:
     """
-    Gets a player's effective level: experience level, plus the Overpower level in UVHM.
+    Gets a player's effective level: experience level, plus the Overpower level in BL2 UVHM.
 
     Args:
         pc: The player's WillowPlayerController.
@@ -115,7 +133,7 @@ def player_level_for(pc: UObject) -> int | None:
     level = int(pri.ExpLevel)
     if level <= 0:
         return None
-    if pc.GetCurrentPlaythrough() == UVHM_PLAYTHROUGH:
+    if has_overpower_levels() and pc.GetCurrentPlaythrough() == UVHM_PLAYTHROUGH:
         level += int(pc.OverpowerChoiceValue)
     return level
 
@@ -136,9 +154,24 @@ def _player_pawn_class() -> UClass:
     return unrealsdk.find_class("WillowPlayerPawn")
 
 
+# Classes that count as vending machines: the base class every game has, plus ones only some
+# games have (looked up by their short native name; a missing one is skipped). The SHiFT
+# machine in The Pre-Sequel's Concordia is an interactive object of its own, not a
+# WillowVendingMachineBase.
+VENDOR_CLASS_NAME = "WillowVendingMachineBase"
+OPTIONAL_VENDOR_CLASS_NAMES = ("WillowVendingMachineShift",)
+
+
 @cache
-def _vending_machine_class() -> UClass:
-    return unrealsdk.find_class("WillowVendingMachineBase")
+def _vendor_classes() -> tuple[UClass, ...]:
+    classes = [unrealsdk.find_class(VENDOR_CLASS_NAME)]
+    for name in OPTIONAL_VENDOR_CLASS_NAMES:
+        try:
+            classes.append(unrealsdk.find_class(name))
+        except ValueError:
+            # Not a class in this game
+            continue
+    return tuple(classes)
 
 
 def _is_player_pawn(obj: UObject) -> bool:
@@ -146,7 +179,8 @@ def _is_player_pawn(obj: UObject) -> bool:
 
 
 def _is_vending_machine(obj: UObject) -> bool:
-    return obj.Class._inherits(_vending_machine_class())
+    cls = obj.Class
+    return any(cls._inherits(vendor) for vendor in _vendor_classes())
 
 
 def _replace_level(
@@ -386,6 +420,12 @@ def on_pawn_loot_game_stage(
     return _apply_band("loot", obj, func, requested, floor=min_item_level, ceiling=max_item_level)
 
 
+# Maps whose containers are never lowered: Bouncy Loot God found a chest in each that spawns
+# nothing when down-levelled (Mercenary Day's hub, The Pre-Sequel's intro). Object paths start
+# with the map name.
+NO_DOWNLEVEL_MAP_PREFIXES = ("Xmas_P.", "MoonShotIntro_P.")
+
+
 @hook("WillowGame.WillowInteractiveObject:SetGameStage")
 def on_interactive_object_game_stage(
     obj: UObject,
@@ -402,17 +442,24 @@ def on_interactive_object_game_stage(
     requested = int(args.NewGameStage)
     if _is_vending_machine(obj):
         return _apply_on_level("vendor", obj, func, requested, enabled=on_level_vendors)
-    return _apply_band(
+    target = _band_target(requested, min_item_level, max_item_level)
+    if target is None:
+        return None
+    wanted, player_level = target
+    if wanted < requested and obj._path_name().startswith(NO_DOWNLEVEL_MAP_PREFIXES):
+        return None
+    return _replace_level(
         "container",
         obj,
         func,
         requested,
-        floor=min_item_level,
-        ceiling=max_item_level,
+        wanted=wanted,
+        player_level=player_level,
     )
 
 
 @hook("WillowGame.WillowVendingMachine:ResetInventory")
+@hook("WillowGame.WillowVendingMachineShift:ResetInventory")
 def on_vending_machine_reset(
     obj: UObject,
     _args: WrappedStruct,
@@ -423,7 +470,9 @@ def on_vending_machine_reset(
     Re-levels a vending machine right before it restocks.
 
     A machine keeps the level it spawned with, so without this the 20 minute restock (and paid
-    resets) would keep producing stock at the level you had when you entered the map.
+    resets) would keep producing stock at the level you had when you entered the map. The
+    second hook target is The Pre-Sequel's SHiFT machine; in Borderlands 2 no such function
+    exists and the hook simply never fires.
     """
     if not on_level_vendors.value:
         return

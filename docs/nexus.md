@@ -26,9 +26,9 @@ Nexus descriptions are BBCode. Paste this as-is:
 ```
 [size=5][b]Enemy and Item Scaling[/b][/size]
 
-A PythonSDK mod that scales enemies and loot to your level.
+A PythonSDK mod for Borderlands 2 and Borderlands: The Pre-Sequel that scales enemies and loot to your level.
 
-Outside of UVHM, Borderlands 2 gives every area a fixed level range. Once you've out-levelled an area, everything in it is stuck behind you: the enemies die in a shot or two and nothing they drop is worth picking up. This mod puts a band around your level and keeps enemies and loot inside it. Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the loot he drops.
+Outside of UVHM, both games give every area a fixed level range. Once you've out-levelled an area, everything in it is stuck behind you: the enemies die in a shot or two and nothing they drop is worth picking up. This mod puts a band around your level and keeps enemies and loot inside it. Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the loot he drops.
 
 Each side of the band is its own option. You can raise only the enemies that fall behind you, raise only the loot, cap anything that has run ahead of you, or leave any of them vanilla. The enemy and item settings are independent, so you can keep vanilla enemy scaling and still get the gear they drop on your level.
 
@@ -69,7 +69,7 @@ A step-by-step version with troubleshooting is in the [url=https://github.com/Ca
 [list]
 [*]Source code and issue tracker: [url=https://github.com/CalebEaston/bl2-enemy-and-item-scaling-sdk]GitHub[/url]
 [*]This mod was made with the help of AI (Claude Code), under my direction.
-[*]New mod, not everything is tested yet. If something looks off, leave a comment here or open an issue on GitHub. Even a one-liner about what you were doing helps.
+[*]New mod, not everything is tested yet. If something looks off, leave a comment here or open an issue on GitHub. Even a one-liner about what you were doing helps. Pre-Sequel support is new in v0.6 and hasn't been play-tested yet, so reports from there are especially welcome.
 [/list]
 ```
 

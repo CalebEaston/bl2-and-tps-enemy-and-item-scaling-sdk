@@ -18,14 +18,20 @@ whether the toggle was on and what the log said is still to be confirmed).
 
 Open the console (tilde twice) after enabling the mod from the `MODS` menu.
 
-Mod registered and hooks live (expect `True [1, 2, 1]`):
+Mod registered and hooks live (expect `True` and a list of non-zero counts, one per hook
+function; stacked hooks show 2 or 3. A count only proves the hook is registered, not that the
+function exists in this game: the vendor-reset entry shows 2 in both games although its
+Pre-Sequel target never fires in Borderlands 2. The hook-target probe below is the one that
+proves existence):
 
 ```
 py import enemy_item_scaling as m; print(m.mod.is_enabled, [h.get_active_count() for h in m.mod.hooks])
 ```
 
 Player-level fields resolve (all three must print; repeat in Normal mode with an OP-unlocked
-character and check that `OverpowerChoiceValue` is what you expect there):
+character and check that `OverpowerChoiceValue` is what you expect there). In The Pre-Sequel
+leave `pc.OverpowerChoiceValue` out: the field only exists in Borderlands 2 and the mod doesn't
+read it there (`m.has_overpower_levels()` must print `False`).
 
 ```
 py from mods_base import get_pc; pc = get_pc(); print(pc.PlayerReplicationInfo.ExpLevel, pc.OverpowerChoiceValue, pc.GetCurrentPlaythrough())
@@ -137,6 +143,50 @@ struct write did not take; see `docs/sdk-notes.md`.
   logs but the 20-minute restock never does, the timer bypasses `ResetInventory`; stack
   `@hook("WillowGame.WillowVendingMachine:ClearInventory")` on the same callback.
 - With the toggle off, vendors must be untouched even when the item bounds are set.
+
+## 9. The Pre-Sequel (v0.6)
+
+Same mod file, same SDK zip, installed into the Pre-Sequel game folder (`BorderlandsPreSequel`,
+Steam app id 261640 for `protontricks`). Nothing here has been played yet; the hook targets were
+only checked against the game's class stubs.
+
+- Main menu `MODS`: the mod's status must read `Disabled`/`Enabled`, not the yellow
+  `Incompatible` the manager shows for a game missing from `supported_games` (v0.5 and earlier
+  declared `supported_games = ["BL2"]`, which locks the toggle in any other game).
+- Probes from section 0, minus `OverpowerChoiceValue`:
+  `py import enemy_item_scaling as m; print(m.mod.is_enabled, m.has_overpower_levels(), [h.get_active_count() for h in m.mod.hooks])`
+  expects `True False [...]`, and the hook-target probe must list every function (the
+  `CreatePopulationActor` params end in an extra `SpawnOwner`, which is expected).
+- Scenario 1 (enemy floor) in Regolith Range or Serenity's Waste with a high-level character:
+  `spawn PawnBalance_...` lines and matching nameplates. Scenario 2 (item floor): `loot` lines.
+- Claptastic Voyage with the enemy floor on: EnemyBalancer saw `.exe` badasses there come
+  through neither factory function, so expect `enemy <name>: a -> b` and `enemy level <name>`
+  lines instead of `spawn` lines for them, with nameplates and health to match.
+- A fresh character with `Maximum Item Level = Player Level`: every chest in the intro
+  (`MoonShotIntro_P`) must still spawn loot. The mod refuses to lower containers there (and in
+  Mercenary Day's `Xmas_P`), mirroring Bouncy Loot God, which found an empty chest otherwise. A
+  `container` line for one of them means the path prefix is wrong; report the object's path.
+- Wilhelm's Wolf and Saint drones and the jump pads are interactive objects too
+  (`OzSupportDrone`, `OzPlayerJumpPad`). Expect no `container OzSupportDrone...` lines; if they
+  appear, report them.
+- Concordia with `On-Level Vendors` on: a `vendor WillowVendingMachine_N: a -> b` line per
+  ordinary machine, and ideally a `vendor WillowVendingMachineShift_N: a -> b` line for the SHiFT
+  machine (it is a plain interactive object there, so it is classified as a vendor by name; if
+  its factory never calls `SetGameStage` there will be no `vendor WillowVendingMachineShift_N`
+  line at map load, only a `vendor restock WillowVendingMachineShift_N: a -> b` line when it
+  resets). Whether its gamble items (if the shipped machine offers any) follow the stage is
+  unknown; compare their level before and after.
+- Section 7 (mission rewards) with any leftover low-level side mission in Concordia. The
+  Pre-Sequel adds `MissionDefinition.GetMissionLevel(pc, bIncludeLevelAdjustment)` and a
+  `LevelAdjustment` field that Borderlands 2 lacks. Before turning in, with `i` the mission's
+  index in your log, print
+  `py from mods_base import get_pc; pc = get_pc(); m = pc.MissionPlaythroughs[pc.GetCurrentPlaythrough()].MissionList[i].MissionDef; print(m.Name, m.GetGameStage(), m.GetMissionLevel(pc, True), m.LevelAdjustment)`
+  and compare with the reward card. A reward above the mission's logged level by exactly
+  `LevelAdjustment` is the game's own offset, not a bug.
+- Not covered in The Pre-Sequel by design: the Grinder (its output is levelled from the items
+  fed in), SHiFT machine rewards and scripted weapon grants.
+- Search the log for `Traceback` after the first map load: an `AttributeError` naming a field
+  means that field is Borderlands 2 only and needs the same treatment as `OverpowerChoiceValue`.
 
 ## Things only the game can tell us (v2)
 

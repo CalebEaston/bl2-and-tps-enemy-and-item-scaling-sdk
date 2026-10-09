@@ -16,8 +16,12 @@ Four spinner options, each `Vanilla` | `Player Level` | `Within 1 Level` ... `Wi
 | Maximum Item Level | no cap | item level lowered to at most `player + N` |
 
 `player` = `PlayerReplicationInfo.ExpLevel`, plus `OverpowerChoiceValue` in UVHM only. Item bounds
-are independent of enemy bounds. Two `BoolOption`s (v2): `On-Level Mission Rewards` (the mission
-is levelled to the player turning it in before its rewards, XP and cash are rolled) and
+work without enemy bounds (vanilla enemies, on-level loot); a clamped enemy drops loot at its
+clamped level with the item band applied on top. Two `BoolOption`s (v2): `On-Level Mission
+Rewards` (the mission's stage is set to the player turning it in before its rewards, XP and cash
+are rolled: the definition's transient stage from every trigger, the player's saved copy only in
+the grant hook since that copy goes into the save file; a reward item is re-levelled as it is
+taken if it still isn't on level) and
 `On-Level Vendors` (vending machines are set to the player's level when they spawn and before
 they restock; vendors are excluded from the item band). `Log Adjustments` prints every change.
 
@@ -107,14 +111,17 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 
 | Hook | Arg | What it covers |
 |---|---|---|
-| `WillowGame.WillowPawn:SetGameStage` | `NewGameStage` | enemy level at spawn |
-| `WillowGame.WillowPawn:SetGameStageForSpawnedInventory` and `WillowAIPawn:` same | `NewInventoryGameStage` | level of an enemy's drops |
+| `WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor` and `:RestorePopulatedAIPawn` (PRE) | `GameStage`; re-call `func(args)`, return `(Block, spawned)` (no fallback: `prevent_hooking_direct_calls` doesn't cover the factory's nested setter calls, so a retry at the original stage would be re-clamped by the safety nets anyway) | primary enemy path: the factory passes this one argument to `SetGameStage`, `SetExpLevel` (nameplate; the input of the health/damage formulas) and `SetGameStageForSpawnedInventory`, so clamping it moves all three |
+| `WillowGame.WillowPawn:SetGameStage` and `WillowGame.WillowAIPawn:SetExpLevel` | `NewGameStage` / `NewExpLevel` | safety nets for pawns that skip the factory; no-ops after the factory hook. A `SetGameStage`-only hook (v0.1-v0.4) left enemies at their vanilla nameplate/health with on-level drops |
+| `WillowGame.WillowPawn:SetGameStageForSpawnedInventory` and `WillowAIPawn:` same | `NewInventoryGameStage` | level of an enemy's drops (a clamped enemy's drops follow its clamped level; the item band applies on top) |
 | `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band); vending machines (vendor toggle) |
 | `WillowGame.WillowVendingMachine:ResetInventory` | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
 | `WillowGame.QuestAcceptGFxMovie:UpdateMissionList` / `:DetermineQuestEntries` / `:extPopulateQuestEntries` (POST) | iterate `obj.MissionList[]` (`MissionDef`, `MissionStatus`), player `obj.WPCOwner` | primary: levels every accepted mission (status 1/2/3) when an NPC's list is built, before any turn-in, order-independent |
 | `WillowGame.QuestAcceptGFxMovie:SetRewardCard` (PRE) | `MissionDef`, `WPC`; same write if status in {1,2,3} | second trigger when a reward card shows |
 | `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; mission from `obj.MissionList[obj.GetSelectedIndex()].MissionDef`, player `obj.WPCOwner` | backstop at the turn-in confirm; only beats the reroller's hook if ours registered first |
 | `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE) | `Mission`, `bGrantAltReward`; same write | scripted completions with no UI; expected once per player on the host, untested in co-op |
+| `WillowGame.WillowPlayerController:ReceiveWeaponReward` / `:ReceiveItemReward` (PRE) | `Mission`, out `DefinitionData`; rewrite `ManufacturerGradeIndex` + `GameStage`, `func(args)`, `Block` | accept-time safety net: the item is handed over at the player's level. Usually a difference is the mission's own XP levelling the player between roll and accept (ordinary adjustment); if the item is at the mission's ORIGINAL stage (from `_saved_mission_stages`) the roll ignored the write and a "please report this" warning is always logged |
+| `WillowGame.WillowPlayerController:WillowClientDisableLoadingMovie` (POST) | none | clears `_saved_mission_stages` on every map load so no stage crosses characters/playthroughs |
 | `WillowGame.WillowPlayerController:MissionRewardsReceived` (POST_UNCONDITIONAL) and `:UpdateMissionStatus` (POST_UNCONDITIONAL, when `NewMissionStatus == 4` Complete) | `Mission`; restores the saved stage | after the reward is taken / the mission completes; in the vanilla flow Complete comes before the roll and the grant hook re-levels |
 
 All of this is single-player / host-side; in co-op the shared mission object can end up at

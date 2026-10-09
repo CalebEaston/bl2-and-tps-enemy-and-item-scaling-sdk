@@ -261,3 +261,69 @@ client's level; restore is Simulated so the host never restores a client's turn-
 complete) and whether `MissionRewardsReceived` fires on the reroller's accept path (if not, the
 stage simply stays at the player's level; harmless). `EMissionStatus`: NotStarted 0, Active 1,
 RequiredObjectivesComplete 2, ReadyToTurnIn 3, Complete 4, Failed 5.
+
+## v0.5 (2026-10-08): first playtest findings
+
+Enemies (reported: marauders at nameplate level 1 with player 4 and the enemy floor on, drops
+at 4):
+
+- The factory sequence for an AI pawn (juso40's reconstruction of
+  `PopulationFactoryBalancedAIPawn.uc` lines 105-120, `MapLoader/placeablehelper/ai_pawn.py`):
+  `SetGameStage(gs)`, `SetExpLevel(gs)`, `SetGameStageForSpawnedInventory(gs)`,
+  `SetAwesomeLevel(0)`, `Controller.InitializeCharacterClass()`,
+  `Controller.RecalculateAttributeInitializedState()`, `InitializeBalanceDefinitionState(bal, -1)`,
+  `SetupPawnItemPoolList`, `AddDefaultInventory`. `gs` is the factory's own `GameStage` argument
+  each time, so a hook that changes only the `SetGameStage` call leaves `ExpLevel` vanilla.
+- `ExpLevel` is the nameplate (replicated `WillowAIPawn.ExpLevel`) and the `Level` term of the
+  enemy health, shield and damage formulas (`D_Attributes.AI.AICharacterExperienceLevel`, see
+  `Init_BaseEnemyHealth` etc. in the BLCM files quoted in the v2 research), initialised once at
+  spawn. So the v0.1-v0.4 enemy hook produced vanilla enemies with on-level drops: exactly the
+  report. apple1417's `enemy_level_randomizer` has the same limitation.
+- v0.5: PRE hooks on `WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor` (event;
+  BL2 params `Master, Opportunity, SpawnLocationContextObject, SpawnLocation, SpawnRotation,
+  GameStage, AwesomeLevel` per the game-generated stubs) and `:RestorePopulatedAIPawn` (event;
+  `Master, SpawnLocationContextObject, SpawnLocation, SpawnRotation, GameStage, AwesomeLevel,
+  AIPawnMemento`): clamp `args.GameStage`, re-call `func(args)` (pyunrealsdk accepts the
+  function's own args struct as the single argument) under `prevent_hooking_direct_calls()`,
+  return `(Block, spawned)`. No fallback when the re-call returns None: EnemyBalancer saw None
+  on BL1 for stages with no grade, but BL2's factory has no `GetPawnArchetypeForGrade`
+  (`SelectGradeIndex` exists on `Engine.BaseBalanceDefinition`, the pawn grade is always -1),
+  and a retry at the original stage would be pointless anyway because
+  `prevent_hooking_direct_calls` only covers the direct call, not the factory's nested
+  `SetGameStage`/`SetExpLevel` calls, which the safety nets would clamp again (review finding).
+  `WillowPawn:SetGameStage` and `WillowAIPawn:SetExpLevel` (`NewExpLevel`; `WillowAIPawn`
+  redeclares `SetExpLevel` but not `SetGameStage`) stay as safety nets for pawns that come
+  through neither event; they are no-ops when the factory hook already clamped the argument.
+- Consequence: a clamped enemy passes its clamped stage into `SetGameStageForSpawnedInventory`, so
+  its drops follow the enemy level and the item band applies on top. Documented in the README.
+- Not covered: enemy vehicles (`PopulationFactoryWillowVehicle:CreatePopulationActor`,
+  `WillowVehicle:SetGameStage/SetExpLevel`), `WillowAIPawn:AILevelUp` transformations.
+
+Mission rewards (reported: "This Town Ain't Big Enough" reward at 3 with player 6; whether the
+toggle was on is unconfirmed):
+
+- helios' in-game sweep proved XP follows the definition's `GameStage` of a locked mission, but
+  nothing proves the native item roll (`GetItemRewardsForPlayer(WillowPC, out)`) reads the same
+  field rather than the player's saved copy `MissionStatusPlayerData.GameStage`
+  (`pc.MissionPlaythroughs[pc.GetCurrentPlaythrough()].MissionList[pc.NativeGetMissionIndex(m)]`,
+  the value mopioid's Loot Randomizer uses as the reward level). v0.5 writes both (and restores
+  both), reading the entry back and warning if the nested write did not take. The saved copy is
+  written only from the `ServerGrantMissionRewards` PRE hook (right before the native roll, the
+  only reader that could use it): it is what the save file stores
+  (`PlayerSaveGame.MissionPlaythroughs[].MissionData`, Gibbed `MissionData.GameStage`), so writing
+  it from the mission-list hook would persist a raised stage for any mission looked at and left
+  for later. The definition's transient stage is still written from every trigger (the reroller
+  reads that). `_saved_mission_stages` is cleared on `WillowClientDisableLoadingMovie` (POST) so a
+  stage remembered for one character/playthrough is never restored into another's record.
+- Accept-time safety net: PRE hooks on `WillowPlayerController:ReceiveWeaponReward` /
+  `:ReceiveItemReward` (`Mission`, out `DefinitionData`, script Simulated|Final; this is what
+  `MissionRewardGFxObject.AcceptReward` calls) rewrite `ManufacturerGradeIndex` and `GameStage`
+  to the player's level and re-call `func(args)`, Block. The mission's own XP is granted inside
+  `ServerGrantMissionRewards` before the reward UI opens, so a turn-in that levels the player up
+  routinely makes the rolled item one level short at accept time: that is logged (with
+  `Log Adjustments`) as an ordinary `reward item` adjustment. Only when the item is at the
+  mission's ORIGINAL stage (`_saved_mission_stages[path][0]` or `[2]`) did the roll ignore the
+  write; that case is always logged as a warning with "please report this". Parts were rolled at
+  the old stage; mopioid ships the same grade/stage rewrite, so the item is valid. Reward
+  Reroller grants its items without `ReceiveWeaponReward`, and other legacy mods' direct calls
+  bypass hooks, so this net only sees the vanilla accept path.

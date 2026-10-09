@@ -1,10 +1,18 @@
 # In-game test plan
 
-Nothing here has run in the game yet; this is the order to check things in, and what each check
-settles. Turn on `Log Adjustments` for all of it. Log lines look like
-`[Enemy and Item Scaling] enemy WillowAIPawn_12: 3 -> 15 (player 15)` with the kind being
-`enemy`, `loot`, `container` or `vendor`, and only appear when a level actually changed. The v2
-lines `vendor restock X: a -> b` and `mission reward M: a -> b` have no `(player N)` suffix.
+This is the order to check things in, and what each check settles. Turn on `Log Adjustments` for
+all of it. Log lines look like `[Enemy and Item Scaling] spawn PawnBalance_Marauder: 3 -> 15
+(player 15)` with the kind being `spawn` (the factory hook), `enemy` / `enemy level` (the two
+safety nets; silent when the factory hook already did the work), `loot`, `container` or
+`vendor`, and only appear when a level actually changed. The lines `vendor restock X: a -> b`,
+`mission reward M: a -> b (player's copy c)` and `reward item M: a -> b` have no `(player N)`
+suffix.
+
+First playtest (2026-10-08, v0.2-v0.4, Southern Shelf, player 4 then 6): enemies kept their
+nameplate level while their drops scaled (fixed in v0.5 by hooking the population factory, see
+scenario 1), and "This Town Ain't Big Enough" gave a level-3 reward at player level 6 with the
+mission toggle believed on (v0.5 adds the player's-copy write and the accept-time safety net;
+whether the toggle was on and what the log said is still to be confirmed).
 
 ## 0. Console probes (before trusting anything)
 
@@ -27,25 +35,31 @@ Every hook target exists and has the parameter name the code reads (a `ValueErro
 function; it's fine if exactly one of the two `SetGameStageForSpawnedInventory` paths is missing):
 
 ```
-py import unrealsdk; print([(f, [p.Name for p in unrealsdk.find_object('Function', f)._properties()]) for f in ('WillowGame.WillowPawn:SetGameStage', 'WillowGame.WillowPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowAIPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowInteractiveObject:SetGameStage', 'WillowGame.WillowVehicle:SetGameStage')])
+py import unrealsdk; print([(f, [p.Name for p in unrealsdk.find_object('Function', f)._properties()]) for f in ('WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor', 'WillowGame.PopulationFactoryBalancedAIPawn:RestorePopulatedAIPawn', 'WillowGame.WillowPawn:SetGameStage', 'WillowGame.WillowAIPawn:SetExpLevel', 'WillowGame.WillowPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowAIPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowInteractiveObject:SetGameStage', 'WillowGame.WillowPlayerController:ReceiveWeaponReward', 'WillowGame.WillowPlayerController:ReceiveItemReward')])
 ```
 
-Expect `NewGameStage` for the `SetGameStage` functions and `NewInventoryGameStage` for the
-inventory ones.
+Expect `GameStage` among the factory functions' params, `NewGameStage` for the `SetGameStage`
+functions, `NewExpLevel` for `SetExpLevel`, `NewInventoryGameStage` for the inventory ones and
+`Mission`, `DefinitionData` for the reward ones.
 
 ## 1. Enemy floor
 
 Level 15+ character, Normal mode. `Minimum Enemy Level = Player Level`, the other three `Vanilla`.
 Go to Southern Shelf (vanilla level 1-5).
 
-- Expect one `enemy ... : 2..5 -> 15 (player 15)` line per bullymong/bandit spawn.
-- Nameplates should read 15 and enemies should be noticeably tougher. If the log says 15 but
-  nameplates stay 2-5, the game sets the displayed level separately: add a stacked hook on
-  `WillowGame.WillowAIPawn:SetExpLevel` (arg `NewExpLevel`) clamped with the enemy band.
-- If nameplates read 15 but health is clearly still level-5 health, the balance grade was chosen
-  before `SetGameStage`: switch the enemy path to a PRE hook on
-  `WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor` (arg `GameStage`, return
-  `(Block, spawned)`), see `docs/sdk-notes.md`.
+- Expect one `spawn PawnBalance_...: 2..5 -> 15 (player 15)` line per bullymong/bandit spawn, and
+  no `enemy` / `enemy level` lines for those same spawns (the factory already passed 15 in).
+- Nameplates should read 15 and enemies should be noticeably tougher.
+- Playtest result before v0.5: with only the `WillowPawn:SetGameStage` hook, nameplates stayed at
+  the vanilla level while drops scaled. The factory sets `ExpLevel` (nameplate, and the input of
+  the health/damage formulas) from its own `GameStage` argument right after `SetGameStage`, so
+  the argument is what has to change.
+- If an enemy type stops spawning at all with the floor on (an empty den that fills when the
+  floor is set back to `Vanilla`), the factory returned nothing for that stage; report the
+  enemy type and the levels.
+- If an enemy still shows a vanilla level with no `spawn` line, it came through neither factory
+  function; look for an `enemy` / `enemy level` line for it, and if there is none either, find
+  its spawn path (`SpawnAIPawn`, `Behavior_SpawnFromPopulationSystem`).
 
 ## 2. Item floor
 
@@ -95,13 +109,19 @@ Southern Shelf). Before turning in, probe that the hook target exists and the fi
 py import unrealsdk; print([p.Name for p in unrealsdk.find_object('Function', 'WillowGame.WillowPlayerController:ServerGrantMissionRewards')._properties()])
 ```
 
-Expect `Mission` and `bGrantAltReward`. Turn the mission in: expect one
-`mission reward <Mission_...>: 5 -> 15` line, the reward card showing level 15 gear, and the XP
-reward noticeably larger than the mission log said. If the card still shows level 5, the native
-reward roll reads the per-player copy of the stage, not `MissionDefinition.GameStage`; the
-verified fallback is a PRE hook on `WillowPlayerController:ReceiveWeaponReward` /
-`:ReceiveItemReward` rewriting `DefinitionData.ManufacturerGradeIndex` and `.GameStage` (see
-`docs/sdk-notes.md`).
+Expect `Mission` and `bGrantAltReward`. Open the NPC's mission list: expect one
+`mission reward <Mission_...>: 5 -> 15` line. Turn the mission in: probably a second
+`mission reward ...: 5 -> 15 (player's copy 5)` line from the grant hook (if the Complete status
+restores the stage just before it; otherwise the grant hook logs nothing), the reward card
+showing level 15 gear, and the XP reward noticeably larger than the mission log said. If a `reward item <Mission_...>: 5 -> 15 (the roll
+ignored the mission's level; please report this)` warning appears when the item is taken, the
+roll ignored both stage writes and only the accept-time safety net saved it: the item is level
+15 but the card showed 5. Then the roll's input is something else again
+(`MissionDefinition.ExpLevel`? the `UnclaimedRewards` path?) and the display-time rewrite of
+`MissionRewardGFxObject:SetUpRewardsPage` (`obj.RewardData`) is the next thing to try. A
+`reward item ...: 15 -> 16 (player 16)` info line is normal: the mission's XP levelled you up
+between the roll and the accept. A `could not write the player's copy` warning means the nested
+struct write did not take; see `docs/sdk-notes.md`.
 
 ## 8. Vendors (v2)
 

@@ -186,6 +186,36 @@ def _replace_level(
     return Block
 
 
+def _band_target(
+    requested: int,
+    floor: SpinnerOption,
+    ceiling: SpinnerOption,
+) -> tuple[int, int] | None:
+    """
+    Works out what a band would turn a requested level into.
+
+    Args:
+        requested: The level the game asked for.
+        floor: The spinner holding the lower bound.
+        ceiling: The spinner holding the upper bound.
+    Returns:
+        (wanted level, player level) when the band changes the level, None when it leaves it
+        alone (both bounds vanilla, player not loaded, or already inside the band).
+    """
+    floor_offset = LEVEL_CHOICES.get(floor.value)
+    ceiling_offset = LEVEL_CHOICES.get(ceiling.value)
+    if floor_offset is None and ceiling_offset is None:
+        return None
+
+    player_level = get_player_level()
+    if player_level is None:
+        return None
+    wanted = clamp_level(requested, player_level, floor_offset, ceiling_offset)
+    if wanted == requested:
+        return None
+    return wanted, player_level
+
+
 def _apply_band(
     kind: str,
     obj: UObject,
@@ -208,15 +238,10 @@ def _apply_band(
     Returns:
         Block if the call was replaced with a clamped one, None to let the original run.
     """
-    floor_offset = LEVEL_CHOICES.get(floor.value)
-    ceiling_offset = LEVEL_CHOICES.get(ceiling.value)
-    if floor_offset is None and ceiling_offset is None:
+    target = _band_target(requested, floor, ceiling)
+    if target is None:
         return None
-
-    player_level = get_player_level()
-    if player_level is None:
-        return None
-    wanted = clamp_level(requested, player_level, floor_offset, ceiling_offset)
+    wanted, player_level = target
     return _replace_level(kind, obj, setter, requested, wanted=wanted, player_level=player_level)
 
 
@@ -255,6 +280,45 @@ def _apply_on_level(
     )
 
 
+def _factory_name(factory: UObject) -> str:
+    balance = factory.PawnBalanceDefinition
+    return factory.Name if balance is None else balance.Name
+
+
+@hook("WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor")
+@hook("WillowGame.PopulationFactoryBalancedAIPawn:RestorePopulatedAIPawn")
+def on_spawn_ai_pawn(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    func: BoundFunction,
+) -> tuple[type[Block], UObject | None] | None:
+    """
+    Scales an enemy's level before the population factory builds it.
+
+    The factory hands its GameStage argument to everything that makes up the enemy: the game
+    stage, the displayed level (ExpLevel, which its health and damage are computed from) and
+    the level of its drops. Changing the argument here moves all of them together; changing
+    only the game stage afterwards (the v0.1-v0.4 approach) left the enemy at its old level
+    with on-level drops.
+    """
+    requested = int(args.GameStage)
+    target = _band_target(requested, min_enemy_level, max_enemy_level)
+    if target is None:
+        return None
+    wanted, player_level = target
+
+    if log_adjustments.value:
+        logging.info(
+            f"{LOG_PREFIX} spawn {_factory_name(obj)}: {requested} -> {wanted}"
+            f" (player {player_level})",
+        )
+    args.GameStage = wanted
+    with prevent_hooking_direct_calls():
+        spawned = func(args)
+    return Block, spawned
+
+
 @hook("WillowGame.WillowPawn:SetGameStage")
 def on_pawn_game_stage(
     obj: UObject,
@@ -262,12 +326,43 @@ def on_pawn_game_stage(
     _ret: Any,
     func: BoundFunction,
 ) -> type[Block] | None:
-    """Scales an enemy's level as it spawns."""
+    """
+    Scales an enemy's game stage as it is set.
+
+    Safety net for enemies that don't come through the population factory. For the ones that
+    do, the factory hook above already passed the clamped level in, so this is a no-op.
+    """
     if _is_player_pawn(obj):
         return None
     requested = int(args.NewGameStage)
     return _apply_band(
         "enemy",
+        obj,
+        func,
+        requested,
+        floor=min_enemy_level,
+        ceiling=max_enemy_level,
+    )
+
+
+@hook("WillowGame.WillowAIPawn:SetExpLevel")
+def on_ai_pawn_exp_level(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    func: BoundFunction,
+) -> type[Block] | None:
+    """
+    Scales an enemy's displayed level (the one its health and damage come from) as it is set.
+
+    Same safety net as the game stage one: the factory sets this right after the game stage,
+    from the same argument, so an enemy that skipped the factory still ends up consistent.
+    """
+    if _is_player_pawn(obj):
+        return None
+    requested = int(args.NewExpLevel)
+    return _apply_band(
+        "enemy level",
         obj,
         func,
         requested,
@@ -348,41 +443,87 @@ def on_vending_machine_reset(
 
 
 # Mission stages we changed so rewards roll at the player's level, keyed by mission path and
-# holding the original (GameStage, bGameStageLocked). Restored once the reward has been taken.
-_saved_mission_stages: dict[str, tuple[int, bool]] = {}
+# holding the originals: the definition's (GameStage, bGameStageLocked) and the player's own
+# saved copy of the stage (None unless we wrote that copy). Restored once the reward is taken,
+# and forgotten on every map load so nothing carries over to another character or playthrough.
+_saved_mission_stages: dict[str, tuple[int, bool, int | None]] = {}
 
 # EMissionStatus values for a mission the player has accepted but not finished with:
 # Active, RequiredObjectivesComplete, ReadyToTurnIn.
 MISSION_ACCEPTED_STATUSES = frozenset({1, 2, 3})
 
 
-def _level_mission(mission: UObject, pc: UObject) -> None:
+def _player_mission_entry(pc: UObject, mission: UObject) -> WrappedStruct | None:
+    """
+    Finds a player's own saved record of a mission (status, progress and game stage).
+
+    Args:
+        pc: The WillowPlayerController.
+        mission: The MissionDefinition.
+    Returns:
+        The MissionStatusPlayerData entry for the current playthrough, or None if the player
+        has none for this mission.
+    """
+    index = int(pc.NativeGetMissionIndex(mission))
+    if index < 0:
+        return None
+    playthroughs = pc.MissionPlaythroughs
+    playthrough = int(pc.GetCurrentPlaythrough())
+    if not 0 <= playthrough < len(playthroughs):
+        return None
+    missions = playthroughs[playthrough].MissionList
+    if index >= len(missions):
+        return None
+    return missions[index]
+
+
+def _level_mission(mission: UObject, pc: UObject, *, write_entry: bool = False) -> None:
     """
     Sets a mission's game stage to a player's level, remembering what it was.
 
-    The native reward roll, the XP and cash, and any mod that asks `mission.GetGameStage()`
-    all read this field while the mission is locked, so writing it is what makes rewards come
-    out on level regardless of who does the rolling.
+    The mission's level lives in two places: the definition's transient `GameStage` (what the
+    XP and cash come from, and what mods asking `mission.GetGameStage()` see) and the player's
+    own saved copy of it, which goes into the save file. The definition is always written; the
+    saved copy only right before the game's own reward roll (`write_entry`), the one reader
+    that might use it, so a mission merely looked at and left for later isn't changed on disk.
 
     Args:
         mission: The MissionDefinition.
         pc: The WillowPlayerController whose level to use.
+        write_entry: Also write the player's saved copy of the stage.
     """
     player_level = player_level_for(pc)
     if player_level is None:
         return
     current = int(mission.GameStage)
     locked = bool(mission.bGameStageLocked)
-    if current == player_level and locked:
+    entry = _player_mission_entry(pc, mission) if write_entry else None
+    entry_stage = None if entry is None else int(entry.GameStage)
+    if current == player_level and locked and entry_stage in (None, player_level):
         return
 
     if log_adjustments.value:
-        logging.info(f"{LOG_PREFIX} mission reward {mission.Name}: {current} -> {player_level}")
-    _saved_mission_stages.setdefault(mission._path_name(), (current, locked))
+        copy_note = "" if entry is None else f" (player's copy {entry_stage})"
+        logging.info(
+            f"{LOG_PREFIX} mission reward {mission.Name}: {current} -> {player_level}{copy_note}",
+        )
+    path = mission._path_name()
+    saved = _saved_mission_stages.get(path)
+    if saved is None:
+        _saved_mission_stages[path] = (current, locked, entry_stage)
+    elif saved[2] is None and entry_stage is not None:
+        # First time we touch the saved copy of a mission we had already levelled
+        _saved_mission_stages[path] = (saved[0], saved[1], entry_stage)
     mission.GameStage = player_level
     # Accepted missions are already locked; make sure of it so the game doesn't recompute the
     # stage from the mission's region.
     mission.bGameStageLocked = True
+    if entry is not None:
+        entry.GameStage = player_level
+        if int(entry.GameStage) != player_level:
+            logging.warning(
+                f"{LOG_PREFIX} could not write the player's copy of {mission.Name}'s stage",
+            )
 
 
 @hook("WillowGame.QuestAcceptGFxMovie:UpdateMissionList", Type.POST)
@@ -470,26 +611,79 @@ def on_grant_mission_rewards(
 
     Covers completions that never show a reward card (scripted ones). Expected to run on the
     host once per player (untested in co-op), so the level comes from that player's controller.
+    This is the one place the player's saved copy of the stage is written too, in case the
+    native roll reads that rather than the definition.
     """
     if not on_level_mission_rewards.value:
         return
     mission = args.Mission
     if mission is None:
         return
-    _level_mission(mission, obj)
+    _level_mission(mission, obj, write_entry=True)
 
 
-def _restore_mission(mission: UObject) -> None:
+@hook("WillowGame.WillowPlayerController:ReceiveWeaponReward")
+@hook("WillowGame.WillowPlayerController:ReceiveItemReward")
+def on_receive_reward(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    func: BoundFunction,
+) -> type[Block] | None:
+    """
+    Last line of defence: re-levels a reward item as the player takes it.
+
+    If the item is already at the player's level, this does nothing. Usually a difference just
+    means the mission's own XP levelled the player up between the roll and the accept, and the
+    item is bumped like any other adjustment. If the item is at the level the mission had
+    before we changed it, the roll ignored our write: that's a bug worth reporting, so it is
+    always logged.
+    """
+    if not on_level_mission_rewards.value:
+        return None
+    player_level = player_level_for(obj)
+    if player_level is None:
+        return None
+    data = args.DefinitionData
+    current = int(data.ManufacturerGradeIndex)
+    if current == player_level:
+        return None
+
+    mission = args.Mission
+    name = "reward" if mission is None else mission.Name
+    saved = None if mission is None else _saved_mission_stages.get(mission._path_name())
+    if saved is not None and current in (saved[0], saved[2]):
+        logging.warning(
+            f"{LOG_PREFIX} reward item {name}: {current} -> {player_level}"
+            " (the roll ignored the mission's level; please report this)",
+        )
+    elif log_adjustments.value:
+        logging.info(
+            f"{LOG_PREFIX} reward item {name}: {current} -> {player_level} (player {player_level})",
+        )
+    data.ManufacturerGradeIndex = player_level
+    data.GameStage = player_level
+    args.DefinitionData = data
+    with prevent_hooking_direct_calls():
+        func(args)
+    return Block
+
+
+def _restore_mission(mission: UObject, pc: UObject) -> None:
     """
     Puts a mission's stage back to what the game had, if we changed it.
 
     Args:
         mission: The MissionDefinition.
+        pc: The WillowPlayerController whose saved copy to restore.
     """
     saved = _saved_mission_stages.pop(mission._path_name(), None)
     if saved is None:
         return
-    mission.GameStage, mission.bGameStageLocked = saved
+    mission.GameStage, mission.bGameStageLocked, entry_stage = saved
+    entry = _player_mission_entry(pc, mission)
+    if entry is not None and entry_stage is not None:
+        entry.GameStage = entry_stage
 
 
 # EMissionStatus.MS_Complete
@@ -498,7 +692,7 @@ MISSION_COMPLETE = 4
 
 @hook("WillowGame.WillowPlayerController:MissionRewardsReceived", Type.POST_UNCONDITIONAL)
 def on_mission_rewards_received(
-    _obj: UObject,
+    obj: UObject,
     args: WrappedStruct,
     _ret: Any,
     _func: BoundFunction,
@@ -506,12 +700,12 @@ def on_mission_rewards_received(
     """Restores the mission once the player has taken the reward (rerolls included)."""
     mission = args.Mission
     if mission is not None:
-        _restore_mission(mission)
+        _restore_mission(mission, obj)
 
 
 @hook("WillowGame.WillowPlayerController:UpdateMissionStatus", Type.POST_UNCONDITIONAL)
 def on_mission_status_updated(
-    _obj: UObject,
+    obj: UObject,
     args: WrappedStruct,
     _ret: Any,
     _func: BoundFunction,
@@ -527,7 +721,25 @@ def on_mission_status_updated(
         return
     mission = args.Mission
     if mission is not None:
-        _restore_mission(mission)
+        _restore_mission(mission, obj)
+
+
+@hook("WillowGame.WillowPlayerController:WillowClientDisableLoadingMovie", Type.POST)
+def on_map_loaded(
+    _obj: UObject,
+    _args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Forgets the saved mission stages when a map finishes loading.
+
+    Every character or playthrough switch goes through a load, so a stage remembered for one
+    character can never be written into another's record. A mission levelled in one map and
+    turned in in another just keeps the level it was last set to, which is what the turn-in
+    sets anyway.
+    """
+    _saved_mission_stages.clear()
 
 
 mod = build_mod(

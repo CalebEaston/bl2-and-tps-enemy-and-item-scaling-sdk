@@ -33,6 +33,9 @@ The four level bounds take `Vanilla`, `Player Level`, or `Within 1` to `Within 1
   boss drops)
 - **Maximum Item Level** - loot above this is lowered to it
 
+An enemy that gets raised or lowered drops loot at its new level, and the item settings apply on
+top of that.
+
 Two on/off switches:
 
 - **On-Level Mission Rewards** - mission reward items come out at your level (the XP and cash
@@ -41,7 +44,7 @@ Two on/off switches:
 
 And **Log Adjustments** prints each change to the console.
 
-Everything starts off or on `Vanilla`. The settings don't affect each other. In co-op only the
+Everything starts off or on `Vanilla`. Each setting works on its own. In co-op only the
 host's settings matter. Enemies already alive when you level up keep their level until they
 respawn.
 

@@ -28,10 +28,15 @@ which the save file stores; written on accept, on each level-up, on map load and
 NPC list / reward card / turn-in / grant backstops; nothing is restored; the reward item is only
 checked as it is taken, and a roll below the stage the mission had at the roll logs a "please
 report this" line. One `BoolOption`:
-`On-Level Vendors` (vending machines are set to the player's level when they spawn and before
-they restock; vendors are excluded from the item band; in TPS the Concordia SHiFT machine,
+`On-Level Vendors` (vending machines below the player's level are raised to it when they spawn
+and before they restock, never lowered: v0.8 also lowered them, and that emptied machines in the
+Fight for Sanctuary DLC for a low character; vendors are excluded from the item band; in TPS the Concordia SHiFT machine,
 `WillowVendingMachineShift`, a plain `WillowInteractiveObject`, counts as a vendor too).
-`Log Adjustments` prints every change.
+`Log Adjustments` prints every change, plus report-only lines (since v0.9): `settings` at map
+load, `vendor opened` (level, exp level, item count), `turn-in` / `turn-in ... complete` and
+`reward page key`. The "is being turned in again" warning (a confirmed turn-in whose previous
+confirm on the same map visit never reached status 4; the record is cleared at every map load)
+prints even with it off.
 
 Current priority: **get a working version in-game first, then patch**. Don't over-engineer for
 compatibility yet; see "Later" at the bottom for the compatibility work that is deferred. Keep it
@@ -146,13 +151,15 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 | `WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor` and `:RestorePopulatedAIPawn` (PRE) | `GameStage`; re-call `func(args)`, return `(Block, spawned)` (no fallback: `prevent_hooking_direct_calls` doesn't cover the factory's nested setter calls, so a retry at the original stage would be re-clamped by the safety nets anyway) | primary enemy path: the factory passes this one argument to `SetGameStage`, `SetExpLevel` (nameplate; the input of the health/damage formulas) and `SetGameStageForSpawnedInventory`, so clamping it moves all three |
 | `WillowGame.WillowPawn:SetGameStage` and `WillowGame.WillowAIPawn:SetExpLevel` | `NewGameStage` / `NewExpLevel` | safety nets for pawns that skip the factory; no-ops after the factory hook. A `SetGameStage`-only hook (v0.1-v0.4) left enemies at their vanilla nameplate/health with on-level drops |
 | `WillowGame.WillowPawn:SetGameStageForSpawnedInventory` and `WillowAIPawn:` same | `NewInventoryGameStage` | level of an enemy's drops (a clamped enemy's drops follow its clamped level; the item band applies on top) |
-| `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band; never lowered when the object path starts with `Xmas_P.` or `MoonShotIntro_P.`, where Bouncy Loot God found a chest that spawns nothing when down-levelled); vending machines (vendor toggle) |
-| `WillowGame.WillowVendingMachine:ResetInventory` and `WillowGame.WillowVendingMachineShift:ResetInventory` (TPS only; never fires in BL2) | none; calls `SetGameStage` + `SetExpLevel` on `obj` first | vendor restocks and paid resets |
-| `WillowGame.WillowPlayerController:AcceptMission` (POST, status in {1,2,3} via `GetPlayersMissionStatus`), `:UpdateMissionStatus` (POST_UNCONDITIONAL, `NewMissionStatus` in {1,2,3}) and `:ClientReceiveMissionStatus` (POST, `MissionStatusData.Mission` / `.Status` in {1,2,3}) | `Mission`; same write | the moment a mission is accepted, by NPC or by script (ECHO, cutscene): the native `MissionTracker.ActivateMission` locks the stage, then calls `UpdateMissionStatus` and `ClientReceiveMissionStatus` per player, so a POST write wins; three idempotent hooks because which of them first sees the player's record is open (`docs/sdk-notes.md` v0.7) |
-| `WillowGame.WillowPlayerController:OnExpLevelChange` (POST, only when `bFeedback` or `bNaturalLevelup`) and `:WillowClientDisableLoadingMovie` (POST) | flags / none; iterate `obj.MissionPlaythroughs[obj.GetCurrentPlaythrough()].MissionList` (`Status`, `MissionDef`, `GameStage`) | every accepted mission after a level-up (`ExpLevelUp` increments `ExpLevel` then calls this; the flags skip the call the game makes at character load, when the PRI may still be stale) and after a map load (missions accepted before the bound was set, levels gained elsewhere; also clears `_rolled_stages`) |
+| `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band; never lowered when the object path starts with `Xmas_P.` or `MoonShotIntro_P.`, where Bouncy Loot God found a chest that spawns nothing when down-levelled); vending machines (vendor toggle, raise only since v0.9) |
+| `WillowGame.WillowVendingMachine:ResetInventory` and `WillowGame.WillowVendingMachineShift:ResetInventory` (TPS only; never fires in BL2) | none; calls `SetGameStage` + `SetExpLevel` on `obj` first, only when its `GameStage` is below the player | vendor restocks and paid resets |
+| `WillowGame.WillowInteractiveObject:UseObject` (POST) | none; reads `GameStage`, `ExpLevel`, and on `WillowVendingMachine` `ShopInventory` (30 slots) + `FeaturedItem` | report only, behind Log Adjustments: `vendor opened` line when a vending machine is used |
+| `WillowGame.WillowPlayerController:AcceptMission` (POST, status in {1,2,3} via `GetPlayersMissionStatus`), `:UpdateMissionStatus` (POST_UNCONDITIONAL, `NewMissionStatus` in {1,2,3}) and `:ClientReceiveMissionStatus` (POST, `MissionStatusData.Mission` / `.Status` in {1,2,3}) | `Mission`; same write | the moment a mission is accepted, by NPC or by script (ECHO, cutscene): the native `MissionTracker.ActivateMission` locks the stage, then calls `UpdateMissionStatus` and `ClientReceiveMissionStatus` per player, so a POST write wins; three idempotent hooks because which of them first sees the player's record is open (`docs/sdk-notes.md` v0.7). `UpdateMissionStatus` and `ClientReceiveMissionStatus` also take status 4 (complete), whatever the bound, to clear `_open_turn_ins` (local player only: a co-op host sees every player's) |
+| `WillowGame.WillowPlayerController:OnExpLevelChange` (POST, only when `bFeedback` or `bNaturalLevelup`) and `:WillowClientDisableLoadingMovie` (POST) | flags / none; iterate `obj.MissionPlaythroughs[obj.GetCurrentPlaythrough()].MissionList` (`Status`, `MissionDef`, `GameStage`) | every accepted mission after a level-up (`ExpLevelUp` increments `ExpLevel` then calls this; the flags skip the call the game makes at character load, when the PRI may still be stale) and after a map load (missions accepted before the bound was set, levels gained elsewhere; for the local player only, also clears `_rolled_stages` and `_open_turn_ins` and, with Log Adjustments on, logs the `settings` line, whatever the bound) |
 | `WillowGame.QuestAcceptGFxMovie:UpdateMissionList` / `:DetermineQuestEntries` / `:extPopulateQuestEntries` (POST) | iterate `obj.MissionList[]` (`MissionDef`, `MissionStatus`), player `obj.WPCOwner` | backstop (the v0.4 primary): every accepted mission when an NPC's list is built; normally a no-op since v0.7, kept because it runs before any turn-in whichever order other mods' hooks run in |
 | `WillowGame.QuestAcceptGFxMovie:SetRewardCard` (PRE) | `MissionDef`, `WPC`; same write if status in {1,2,3} | backstop when a reward card shows (still before Reward Reroller's turn-in hook) |
-| `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; `obj.MissionList[obj.GetSelectedIndex()]` after a bounds and status check, player `obj.WPCOwner` | backstop at the turn-in confirm; only beats the reroller's hook if ours registered first |
+| `WillowGame.QuestAcceptGFxMovie:extCompleteConfirmed` (PRE) | none; `obj.MissionList[obj.GetSelectedIndex()]` after a bounds and status check, player `obj.WPCOwner` | backstop at the turn-in confirm; only beats the reroller's hook if ours registered first. Also, whatever the bound, reads the live status (`GetPlayersMissionStatus`) and, for status 2/3, notes the turn-in in `_open_turn_ins` (warns if the same mission is already there) |
+| `WillowGame.QuestAcceptGFxMovie:HandleRewardInputKey` (PRE) | `ukey`, `uevent`; `obj.RewardObject.RewardData.Mission` | report only, behind Log Adjustments: `reward page key` line on IE_Pressed (Reward Reroller completes the mission only on Enter / LeftMouseButton / XboxTypeS_A / XboxTypeS_Start here) |
 | `WillowGame.WillowPlayerController:ServerGrantMissionRewards` (PRE) | `Mission`, `bGrantAltReward`; same write, then the stage goes into `_rolled_stages` | right before the native roll, scripted completions included; expected once per player on the host, untested in co-op |
 | `WillowGame.WillowPlayerController:ReceiveWeaponReward` / `:ReceiveItemReward` (PRE) | `Mission`, out `DefinitionData`; read only | check only: `ManufacturerGradeIndex` below the stage remembered at the roll means the roll read something else, logged as a "please report this" warning; no remembered roll (reroller path, a reward claimed in a later session) means no check |
 
@@ -173,6 +180,14 @@ our `extCompleteConfirmed` hook runs before the reroller's only when our mod was
 (normal launch order). The reroller grants the mission's XP before it rolls, while the mission
 is still ReadyToTurnIn, so a turn-in that levels the player rerolls at the new level; the
 vanilla path marks the mission Complete before the XP, so there the item is one level below.
+Its failure mode (v0.9 analysis, `docs/sdk-notes.md` v0.9): it pays XP and cash before it rolls
+and completes the mission only on Enter / left click / pad A / Start on its reward page, while
+always blocking the game's own completion. An exception after the payment, or leaving the page
+any other way, leaves the mission ReadyToTurnIn, and every further turn-in pays again. Caleb hit
+this on 2026-10-09 with three missions whose only reward is a class skin/head
+(`KeyedItemPoolDefinition`); their pools have no level gates and one was never raised, so our
+mod is not implicated. The `_open_turn_ins` warning detects it within one map load; don't tailor mission levels to
+the reroller's own crash bands.
 
 Where the targets come from: the factory hooks follow galqawala's EnemyBalancer (itself modelled on
 RedxYeti's BL1 Enemy Randomizer); `WillowPawn:SetGameStage` is the one target apple1417's

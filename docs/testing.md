@@ -3,7 +3,8 @@
 Plain steps, nothing to type into the console. Every setting is under the main menu's `MODS`
 entry, `Enemy and Item Scaling` (enable the mod there first). Turn on `Log Adjustments` for all
 of it: the mod then writes one line to `<game>\Binaries\Win32\Plugins\unrealsdk.log` for every
-level it changes (`<game>` is the folder that contains `sdk_mods`). The file is emptied each
+level it changes, every vending machine you open and every mission you turn in (`<game>` is the
+folder that contains `sdk_mods`). The file is emptied each
 time the game starts, so copy lines out before relaunching. Searching it for
 `Enemy and Item Scaling` finds every line of ours. The developer version with console probes is
 [testing-probes.md](testing-probes.md).
@@ -13,8 +14,8 @@ you only have time for a few, sections 1, 2 and 7 matter most.
 
 A log line looks like `[Enemy and Item Scaling] spawn PawnBalance_Marauder: 3 -> 15 (player 15)`:
 what was changed, the game's internal name for it, the level the game wanted, the level it
-got, and your level. The `(player 15)` tail is left off the examples below; `mission` and
-`vendor restock` lines never have one. The word after the prefix:
+got, and your level. The `(player 15)` tail is left off the examples below, and some lines never
+have one. The word after the prefix:
 
 - `spawn`: an enemy, as the game built it
 - `enemy` / `enemy level`: an enemy that came in by an unusual path (rare; fine as long as the
@@ -23,7 +24,12 @@ got, and your level. The `(player 15)` tail is left off the examples below; `mis
 - `container`: a chest, slot machine or similar
 - `vendor` / `vendor restock`: a vending machine
 - `mission`: an accepted mission
-- `reward item ... (please report this)`: the one line that should never appear
+- `settings`: the mod's version and every setting, once per map load
+- `vendor opened`: a vending machine you opened, its level and how many items it has for sale
+- `turn-in` / `turn-in ... complete`: a mission you turned in, then the game marking it done
+- `reward page key`: a key you pressed on a mission's reward page
+- `reward item ... (please report this)` and `... is being turned in again ...`: lines that
+  should never appear
 
 ## 1. Enemies
 
@@ -60,16 +66,21 @@ in Southern Shelf: nameplates show 12 and the `spawn` lines read `3 -> 12 (playe
 
 ## 5. Vanilla
 
-All five bounds on `Vanilla` and `On-Level Vendors` off: searching the log for
-`Enemy and Item Scaling` finds nothing, on any map.
+All five bounds on `Vanilla` and `On-Level Vendors` off: the log has no lines that change a level
+(`spawn`, `enemy`, `loot`, `container`, `vendor`, `vendor restock`, `mission`), on any map. The
+`settings`, `vendor opened`, `turn-in` and `reward page key` lines still appear; they only
+report.
 
 ## 6. Vendors
 
-Settings: `On-Level Vendors` on, all five bounds `Vanilla`. A high character in an early area.
+Settings: `On-Level Vendors` on, all five bounds `Vanilla`.
+
+A high character in an early area:
 
 - When the map loads, the log gets a `vendor WillowVendingMachine_N: 3 -> 15` line per machine.
 - Open a weapon vendor: the stock is around your level (the game rolls up to two below), the
-  item of the day exactly your level.
+  item of the day exactly your level. The log gets a
+  `vendor opened WillowVendingMachine_N: level 15 ...` line saying how many items it has.
 - Gain a level somewhere, then come back to a machine after it has restocked (about twenty
   minutes after the map loaded): the stock is at your new level and the log has a
   `vendor restock WillowVendingMachine_N: 15 -> 16` line. If you did not level up there is no
@@ -78,6 +89,18 @@ Settings: `On-Level Vendors` on, all five bounds `Vanilla`. A high character in 
   continue (the machine keeps its level until the map reloads): the vendor is back at the
   area's level and there is no `vendor` or `container` line for it.
 - If there is no `vendor` line at map load but the stock is right anyway: say so.
+
+A low character in a high area (Fight for Sanctuary below level 30, where the empty machines
+were seen, or a level 5 character in Three Horns Divide), with the settings from the top of this
+section again: `On-Level Vendors` on, all five bounds `Vanilla` (the log's `settings` line should
+say `On-Level Vendors = True`):
+
+- No `vendor` line at map load for those machines: they keep the area's level.
+- Open each machine (guns, health, ammo): it has items for sale at the area's level, as without
+  the mod, and its `vendor opened` line shows more than 0 items.
+- If any machine has nothing for sale: send its `vendor opened` line and every `vendor` line
+  from that map, which machine it was (guns, health or ammo), your level, and Normal, TVHM or
+  UVHM.
 
 ## 7. Missions
 
@@ -99,6 +122,11 @@ own mission list; "log" means `unrealsdk.log`.
   level back on load and the mod raised it again. It still works; tell me anyway.)
 - Turn it in: the reward card shows gear at your level. (XP and cash follow the level too, but
   there is nothing to compare them against; if the gear is wrong, note the XP number as well.)
+- Each turn-in logs `turn-in M_...: level 15, status 3` and then `turn-in M_... complete`, and
+  the mission leaves the list. With Reward Reroller, accept its reward page with Enter or a
+  click. If the mission is still in the list afterwards, don't turn it in again; see section 9.
+  If it leaves the list but no `turn-in M_... complete` line follows its `turn-in` line, say so
+  and send both lines.
 - If the turn-in itself levels you up, the reward may be one level below your new level. That
   is the game's order of events, not a bug. With Reward Reroller it comes out at the new level.
 - If you hold a mission above your level (a DLC mission taken early, say): it keeps its level
@@ -129,10 +157,39 @@ yet.
 - Any block containing `Traceback` or `AttributeError` after the first map load: send the whole
   block.
 
+## 9. A mission you can turn in more than once
+
+Seen with Dr. T and the Vault Hunters, No Vacancy and In Memoriam: the turn-in pays XP and cash
+but the mission stays in the list, so it can be turned in again and again. All three reward only
+a skin or head, and Reward Reroller takes over turn-ins, so these two tests tell the mods apart.
+Each test turn-in pays XP, so back up your save folder first:
+`Documents\My Games\Borderlands 2\WillowGame\SaveData` (under Proton,
+`steamapps/compatdata/49520/pfx/drive_c/users/steamuser/Documents/My Games/Borderlands 2/WillowGame/SaveData`).
+
+Use a mission that is stuck (still in the list after a turn-in). If none is, a skin or head
+mission you haven't turned in works: Symbiosis or Shielded Favors in Southern Shelf. Stop at the
+first step where the mission leaves the list, and send the log.
+
+1. With both mods on as usual and `Log Adjustments` on, turn the mission in and press Enter on
+   Reward Reroller's reward page (if no reward page appears at all, say so). If it leaves the
+   list (the log shows `reward page key Enter`, then `turn-in M_... complete`), the earlier
+   turn-ins were most likely left another way: say how you left the reward page then (Escape,
+   say, or no reward page at all). Pressing Enter or clicking is the workaround.
+2. Still in the list: in `MODS`, disable `Enemy and Item Scaling`, keep Reward Reroller on, turn
+   it in again and press Enter. Still in the list: this mod is not the cause.
+3. Still in the list: enable `Enemy and Item Scaling` again with your usual settings, disable
+   Reward Reroller, and turn it in once more. If it now leaves the list (the log has
+   `turn-in M_... complete`), Reward Reroller is the cause.
+4. If it still stays in the list with Reward Reroller off, note every mod enabled in `MODS`.
+
+Send the whole log afterwards, before relaunching. A block in it containing `Traceback` and
+`RewardReroller` means Reward Reroller hit an error.
+
 ## What to send
 
-The log lines mentioned above, your level, the area, which game (Borderlands 2 or The
-Pre-Sequel), the mod version shown in the `MODS` menu, and which options were set. One line
+The log lines mentioned above (the `settings` line covers which options were set), your level
+and class, the area, which game (Borderlands 2 or The Pre-Sequel), the mod version shown in the
+`MODS` menu, and the other mods enabled there. One line
 about what you were doing is enough. Post it at
 https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk/issues or wherever you
 got the mod.

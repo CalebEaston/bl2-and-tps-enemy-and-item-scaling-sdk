@@ -588,3 +588,91 @@ the README's Credits section and the Nexus page text; this is the full list.
 Looked at and not used: juso40's ScaledTVHM and BadassBounties, Rossays' Game Scaler, RedxYeti's
 Projectile Randomizer. If code from any GPL source is ever copied in, the mod would have to be
 GPL-3.0; keep borrowing ideas and facts, not code.
+
+## v0.9 (2026-10-10): vendors raise only, turn-in diagnostics
+
+Second playtest report (2026-10-09, v0.8): (1) vending machines whose vanilla level is above the
+player had 0 items, seen with a low character in Commander Lilith & the Fight for Sanctuary;
+(2) Dr. T and the Vault Hunters (level 35, player 4), No Vacancy (level 9, player 18) and
+In Memoriam (player far above it) could be turned in again and again, each turn-in paying XP and
+cash (player 4 -> 12). No log or settings came with it. A workflow (three investigators, a
+skeptic each, a planner) produced the analysis below; nothing of it has been run in game.
+
+### Vendors
+
+- The Fight for Sanctuary machines are ordinary base-game shops: opportunity points in its maps
+  (`BackBurner_LD`, `Helios_LD`, `OldDust_Interactive`, `ResearchCenter_Interactive`,
+  `Sandworm_Interactive`, `GaiusSanctuary_Interactive`, ...) use
+  `GD_Population_Shopping.VendingMachine.*`, `GD_Balance_Shopping.VendingMachineGrades` (one
+  grade, stages 1-100) and the `GD_ItemPools_Shop` pools, with `GameStageRegion` set to
+  `GD_Anemone_GameStages.Regions.*`, stage 30-38 in Normal (38-52 TVHM,
+  `Anemone_P1/P2_GameBalance`). Marcus's weapons machine is only in Backburner.
+- Stock rolls at the machine's stage plus a random -2..0
+  (`GD_Economy.VendingMachine.Init_VendingMachine_LootGamestageVariance`), and shop categories
+  have minimum-stage gates (`MinGameStageRequirement` via `GD_Itempools.Scheduling.*`): pistols 2,
+  assault rifles / shotguns 5, SMGs / snipers 7, launchers 10, shields 3, class mods 8-10, grenade
+  mods 7, rocket ammo 12. Every BL2 category is available from 12.
+- So v0.8, which pulled every machine to exactly the player's level, could strip whole
+  categories from a machine dropped from 30+ to a low level. How it reaches a fully empty
+  machine is not settled: if gated branches are dropped only directly under a shop pool, a
+  weapons machine comes out empty about 28% of the time at stage 4, 10% at 5, 3% at 6; if they
+  are dropped recursively, only at stage 1 or below (and the item of the day is then a skin).
+  Health machines (ungated `HealthShop_InstaHealth_1`) and ammo machines (ungated bullet pools)
+  can't come out empty from the data at all. A ReBased reading of the native code
+  (`BL2_ReBased_NATIVE_WEAPON_RULES.md:190-193`, unverified) instead clamps a roll into the pool's
+  own range. Other candidates if health or ammo machines were empty too: a stale player level at
+  load, the ExpLevel left at vanilla by the spawn hook (only `SetGameStage` is replaced there),
+  hotfixes, another mod.
+- Raising can't empty a base-game shop: every balance reachable from the shop pools tops out at
+  100 or more, and the only max-gated pools in BL2 are the grenade item-of-the-day fallback
+  (max 6) and `Pool_SDU_EquipSlot` (max 24), neither reachable from vending stock.
+- v0.9: `On-Level Vendors` raises only (`_apply_on_level` wants `max(requested, player)`, the
+  restock hook returns when `GameStage >= player`). Safe by construction, the same rule as the
+  mission bound. Trade-off: an underleveled player sees vanilla, above-level stock. If Caleb
+  wants lowering back, the options are a floor (`min(requested, max(P, 12))` keeps every BL2
+  category) or a re-roll when the restock comes out empty; `ResetInventory` fills
+  `ShopInventory` synchronously (Bouncy Loot God reads `FeaturedItem` right after calling it).
+- `Maximum Item Level` has the same exposure for containers (Eridium configs need 7, rocket ammo
+  12, the laundry-machine relic 14, Pearl pools on enemy drops 51), but nobody has reported it
+  and the gate semantics are contested; unchanged, open.
+- New report-only `vendor opened` line (`WillowInteractiveObject:UseObject` POST, same signature
+  in both games; Bouncy Loot God hooks it for vendors): level, exp level, items in
+  `ShopInventory` (fixed 30 slots, on `WillowVendingMachine` only) and whether `FeaturedItem` is
+  set.
+
+### Repeat turn-ins
+
+- Reward Reroller (`RewardReroller/__init__.py`): its `extCompleteConfirmed` hook pays XP and cash
+  (`grant_rewards` -> `earn_mission_xp`, `earn_mission_currency`, :260-263) and then rolls and
+  shows its reward page; the mission is completed only from its `HandleRewardInputKey` hook on
+  IE_Pressed of Enter, LeftMouseButton, XboxTypeS_A or XboxTypeS_Start (:54-57, :281-293). It
+  always blocks hooked calls to `MissionTracker.CompleteMission` and `ServerGrantMissionRewards`
+  (:316-327). A Python exception in a hook is logged and counts as "don't block"
+  (`legacy_compat/unrealsdk/__init__.py:209-210`, pyunrealsdk `hook.cpp:205-215`), so after an
+  exception the game's own confirm runs and its completion is blocked by the reroller. Either way
+  (exception, or the page left without an accept key, or a page that never takes reward input)
+  the mission stays ReadyToTurnIn and the next turn-in pays again.
+- All three missions (`GD_Lobelia_UnlockDoor.M_Lobelia_UnlockDoor`, `M_NoVacancy`,
+  `M_InMemoriam`, all `bRepeatable=False`) reward only a class-keyed customization pool
+  (`KeyedItemPoolDefinition` LobeliaSkin, PurplePale, Head9): 19 of 287 BL2 missions are like
+  that. No pool in those chains has a level gate, so neither a vanilla nor a raised level can make
+  the reroller's pool walk fail. Dr. T was never raised (35 above a level 4-12 player). No Vacancy
+  at 9 with the player at 18 means the bound was Vanilla or Within 9/10 Levels.
+- Our mod writes only `MissionDefinition.GameStage` / `bGameStageLocked` and the record's
+  `GameStage`, never `Status`, blocks no mission function and pays nothing; not implicated. The
+  reroller does have level-dependent crashes of its own (shield rewards that pick the Nova
+  sub-pool at 10-11, whose children need 12; `Pool_Weapons_All_05_VeryRare` at 1-6), which a raise
+  can move a mission into or out of; deliberately not worked around.
+- XP check: mission XP rewards are fractions of the level span (`XPReward_01_Smallest` 0.01 ...
+  `05_Largest` 0.20), so 4 -> 12 took many paid turn-ins.
+- v0.9 diagnostics: the `extCompleteConfirmed` hook now notes every confirm of a mission at
+  status 2/3 in `_open_turn_ins` (live status from `GetPlayersMissionStatus`, not the list's
+  copy), whatever the bound; `UpdateMissionStatus` / `ClientReceiveMissionStatus` reporting
+  status 4 clear it; a second confirm of a mission still in the set prints the always-on "is
+  being turned in again ... (please report this)" warning. `HandleRewardInputKey` (PRE) logs
+  pressed keys on the reward page. Unproven: that status 4 actually goes through either
+  function; the `turn-in ... complete` line in the test plan checks it.
+- Settles it: Caleb's log (a `Traceback` with `RewardReroller` frames), his mod list and class,
+  and the A/B test in `docs/testing.md` section 9 (our mod off with the reroller on, then the
+  reverse, on the same stuck mission). Workaround meanwhile: turn the reroller off for skin/head
+  missions, or accept its page with Enter.

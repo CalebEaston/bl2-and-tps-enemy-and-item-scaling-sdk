@@ -1,5 +1,20 @@
 ## Changelog
 
+### Enemy and Item Scaling v0.9
+- `On-Level Vendors` now only raises vending machines. A machine below your level still stocks
+  at your level; one above your level (a DLC area you are early for, say) keeps its own level,
+  the same as without the mod. Pulling a machine far below its area's level could leave it with
+  little or nothing to sell, which is what happened in Commander Lilith & the Fight for
+  Sanctuary.
+- If a mission is turned in again after a turn-in that never completed it (it stays in the list
+  and can pay its XP and cash again), the log now says so with a "please report this" line, as
+  long as both turn-ins happen on the same map visit (the record starts over at every load).
+  This happened with Dr. T and the Vault Hunters, No Vacancy and In Memoriam alongside Reward
+  Reroller; the cause is still being tracked down and does not appear to be this mod.
+- With `Log Adjustments` on, the log now also shows the mod's settings at each map load, what a
+  vending machine has for sale when you open it, each mission turn-in and when it completes,
+  and the keys pressed on a mission's reward page. These only report.
+
 ### Enemy and Item Scaling v0.8
 - `On-Level Mission Rewards` is now `Minimum Mission Level`, a bound like the other four
   (`Vanilla`, `Player Level`, `Within 1` to `Within 10 Levels`): accepted missions below it are

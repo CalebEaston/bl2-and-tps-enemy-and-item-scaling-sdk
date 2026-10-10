@@ -68,20 +68,35 @@ on_level_vendors = BoolOption(
     "On-Level Vendors",
     False,
     description=(
-        "Vending machines stock items at your level, including the item of the day.\n"
-        "Applies when a machine spawns or restocks."
+        "Vending machines below your level stock items at your level, including the item of\n"
+        "the day. Machines above your level are left as they are: lowering one can leave it\n"
+        "with nothing to sell. Applies when a machine spawns or restocks."
     ),
 )
 log_adjustments = BoolOption(
     "Log Adjustments",
     False,
     description=(
-        "Print every level change to the console and to Binaries/Win32/Plugins/unrealsdk.log.\n"
-        "Useful when testing."
+        "Print every level change, every vending machine you open and every mission you turn\n"
+        "in to the console and to Binaries/Win32/Plugins/unrealsdk.log.\n"
+        "Useful when testing or reporting a bug."
     ),
 )
 
+OPTIONS = [
+    min_enemy_level,
+    max_enemy_level,
+    min_item_level,
+    max_item_level,
+    min_mission_level,
+    on_level_vendors,
+    log_adjustments,
+]
+
 LOG_PREFIX = "[Enemy and Item Scaling]"
+
+# EInputEvent.IE_Pressed
+IE_PRESSED = 0
 
 
 def clamp_level(
@@ -301,7 +316,11 @@ def _apply_on_level(
     enabled: BoolOption,
 ) -> type[Block] | None:
     """
-    Replaces a level-setter call with the player's level, when the toggle is on.
+    Raises a level-setter call to the player's level, when the toggle is on.
+
+    Never lowers: item pools only offer some categories from a minimum level, so a machine
+    pulled far below its area's level can come out with little or nothing to sell (seen in the
+    Fight for Sanctuary DLC with a low-level character).
 
     Args:
         kind: What is being scaled, for the log line.
@@ -322,7 +341,7 @@ def _apply_on_level(
         obj,
         setter,
         requested,
-        wanted=player_level,
+        wanted=max(requested, player_level),
         player_level=player_level,
     )
 
@@ -447,10 +466,10 @@ def on_interactive_object_game_stage(
     func: BoundFunction,
 ) -> type[Block] | None:
     """
-    Scales the level of chests, slot machines and other containers, and of vending machines.
+    Scales the level of chests, slot machines and other containers, and raises vending machines.
 
     Vending machines are interactive objects too, but they get their own toggle rather than the
-    item band.
+    item band, and are only ever raised.
     """
     requested = int(args.NewGameStage)
     if _is_vending_machine(obj):
@@ -480,12 +499,13 @@ def on_vending_machine_reset(
     _func: BoundFunction,
 ) -> None:
     """
-    Re-levels a vending machine right before it restocks.
+    Raises a vending machine to the player's level right before it restocks.
 
     A machine keeps the level it spawned with, so without this the 20 minute restock (and paid
-    resets) would keep producing stock at the level you had when you entered the map. The
-    second hook target is The Pre-Sequel's SHiFT machine; in Borderlands 2 no such function
-    exists and the hook simply never fires.
+    resets) would keep producing stock at the level you had when you entered the map. A machine
+    at or above the player's level is left alone, as at spawn. The second hook target is The
+    Pre-Sequel's SHiFT machine; in Borderlands 2 no such function exists and the hook simply
+    never fires.
     """
     if not on_level_vendors.value:
         return
@@ -493,7 +513,7 @@ def on_vending_machine_reset(
     if player_level is None:
         return
     current = int(obj.GameStage)
-    if current == player_level:
+    if current >= player_level:
         return
 
     if log_adjustments.value:
@@ -504,9 +524,48 @@ def on_vending_machine_reset(
         obj.SetExpLevel(player_level)
 
 
+@cache
+def _stocked_vendor_class() -> UClass:
+    # The machines with a stock list; the black market and the SHiFT machine have none
+    return unrealsdk.find_class("WillowVendingMachine")
+
+
+@hook("WillowGame.WillowInteractiveObject:UseObject", Type.POST)
+def on_interactive_object_used(
+    obj: UObject,
+    _args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Logs a vending machine's level and how much it has for sale when the player opens it.
+
+    Only reports, and runs whether or not On-Level Vendors is on, so a machine with nothing to
+    sell can be compared both ways from the log alone.
+    """
+    if not log_adjustments.value or not _is_vending_machine(obj):
+        return
+    stock = ""
+    if obj.Class._inherits(_stocked_vendor_class()):
+        count = sum(1 for item in obj.ShopInventory if item is not None)
+        featured = "none" if obj.FeaturedItem is None else "yes"
+        stock = f", {count} items, item of the day {featured}"
+    logging.info(
+        f"{LOG_PREFIX} vendor opened {obj.Name}: level {int(obj.GameStage)}"
+        f" (exp level {int(obj.ExpLevel)}){stock} (player {get_player_level()})",
+    )
+
+
 # EMissionStatus values for a mission the player has accepted but not finished with:
 # Active, RequiredObjectivesComplete, ReadyToTurnIn.
 MISSION_ACCEPTED_STATUSES = frozenset({1, 2, 3})
+# The ones a mission can be turned in from, and the one it ends in.
+MISSION_TURN_IN_STATUSES = frozenset({2, 3})
+MISSION_COMPLETE = 4
+
+# Missions whose turn-in was confirmed and that haven't been reported complete since, by path.
+# Cleared on every map load.
+_open_turn_ins: set[str] = set()
 
 # The level each mission had when the game rolled its rewards, keyed by mission path. Only used
 # to check the reward item against it as the player takes it; cleared on every map load.
@@ -602,6 +661,49 @@ def _level_accepted_missions(pc: UObject) -> None:
             _level_mission(entry.MissionDef, pc, entry)
 
 
+def _note_turn_in(mission: UObject, pc: UObject, status: int) -> None:
+    """
+    Records a confirmed turn-in, warning if the last one of the same mission never completed.
+
+    A turn-in that doesn't complete leaves the mission in the list, and turning it in again can
+    pay its XP and cash again. This mod never stops a completion, but another mod's turn-in can
+    fail partway, so this is always logged.
+
+    Args:
+        mission: The MissionDefinition being turned in.
+        pc: The WillowPlayerController turning it in.
+        status: The mission's status for that player as the turn-in was confirmed.
+    """
+    path = mission._path_name()
+    if path in _open_turn_ins:
+        logging.warning(
+            f"{LOG_PREFIX} {mission.Name} is being turned in again, but the last turn-in never"
+            " completed it, so its XP and cash may be paid again. Something stopped it"
+            " completing, possibly another mod (please report this, with any errors above)",
+        )
+    _open_turn_ins.add(path)
+    if log_adjustments.value:
+        logging.info(
+            f"{LOG_PREFIX} turn-in {mission.Name}: level {int(mission.GameStage)},"
+            f" status {status} (player {player_level_for(pc)})",
+        )
+
+
+def _note_complete(mission: UObject) -> None:
+    """
+    Marks a turned-in mission as completed.
+
+    Args:
+        mission: The MissionDefinition the game just set to complete.
+    """
+    path = mission._path_name()
+    if path not in _open_turn_ins:
+        return
+    _open_turn_ins.discard(path)
+    if log_adjustments.value:
+        logging.info(f"{LOG_PREFIX} turn-in {mission.Name} complete")
+
+
 @hook("WillowGame.WillowPlayerController:AcceptMission", Type.POST)
 def on_mission_accepted(
     obj: UObject,
@@ -637,16 +739,22 @@ def on_mission_status_received(
 
     Plot missions handed out by an ECHO or a cutscene never go through `AcceptMission`; the
     status notification is the last thing the game sends each player about the change, so a
-    write here can't be overwritten by the game's own stage bookkeeping.
+    write here can't be overwritten by the game's own stage bookkeeping. Also marks a turned-in
+    mission complete, whatever the mission bound is set to.
     """
-    if _mission_floor_offset() is None:
-        return
     data = args.MissionStatusData
-    if int(data.Status) not in MISSION_ACCEPTED_STATUSES:
-        return
     mission = data.Mission
-    if mission is not None:
-        _level_mission(mission, obj)
+    if mission is None:
+        return
+    status = int(data.Status)
+    if status == MISSION_COMPLETE:
+        # A co-op host sees other players' completions too; only our own turn-ins are tracked
+        if obj.IsLocalPlayerController():
+            _note_complete(mission)
+        return
+    if _mission_floor_offset() is None or status not in MISSION_ACCEPTED_STATUSES:
+        return
+    _level_mission(mission, obj)
 
 
 @hook("WillowGame.WillowPlayerController:OnExpLevelChange", Type.POST)
@@ -677,13 +785,20 @@ def on_map_loaded(
     _func: BoundFunction,
 ) -> None:
     """
-    Levels every accepted mission once a map has loaded.
+    Levels every accepted mission once a map has loaded, and starts the session's records over.
 
     Covers missions accepted before the option was turned on and characters that levelled while
     the mission sat in another map; after a save-quit the game puts the saved record back into
     the definition, so the level sticks and this has nothing to do.
     """
-    _rolled_stages.clear()
+    # On a co-op host this also fires for each client that loads in; only our own load resets
+    # the per-session state
+    if obj.IsLocalPlayerController():
+        _rolled_stages.clear()
+        _open_turn_ins.clear()
+        if log_adjustments.value:
+            settings = ", ".join(f"{option.identifier} = {option.value}" for option in OPTIONS)
+            logging.info(f"{LOG_PREFIX} settings v{mod.version}: {settings}")
     if _mission_floor_offset() is None:
         return
     _level_accepted_missions(obj)
@@ -747,13 +862,12 @@ def on_complete_confirmed(
     _func: BoundFunction,
 ) -> None:
     """
-    Backstop: levels the mission as the turn-in is confirmed.
+    Notes the turn-in as it is confirmed, and levels the mission as a backstop.
 
-    Only beats another mod's hook on the same function if ours registered first (true when
-    both were enabled at launch), so the mission-list hook above is the one to rely on.
+    The levelling only beats another mod's hook on the same function if ours registered first
+    (true when both were enabled at launch), so the mission-list hook above is the one to rely
+    on. The turn-in note runs whatever the mission bound is set to.
     """
-    if _mission_floor_offset() is None:
-        return
     pc = obj.WPCOwner
     if pc is None:
         return
@@ -761,10 +875,38 @@ def on_complete_confirmed(
     entries = obj.MissionList
     if not 0 <= index < len(entries):
         return
-    entry = entries[index]
-    if int(entry.MissionStatus) not in MISSION_ACCEPTED_STATUSES or entry.MissionDef is None:
+    mission = entries[index].MissionDef
+    if mission is None:
         return
-    _level_mission(entry.MissionDef, pc)
+    # The live status, not the list entry's copy from when the list was built
+    status = int(pc.GetPlayersMissionStatus(mission))
+    if status not in MISSION_ACCEPTED_STATUSES:
+        return
+    if _mission_floor_offset() is not None:
+        _level_mission(mission, pc)
+    if status in MISSION_TURN_IN_STATUSES:
+        _note_turn_in(mission, pc, status)
+
+
+@hook("WillowGame.QuestAcceptGFxMovie:HandleRewardInputKey")
+def on_reward_page_key(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    _func: BoundFunction,
+) -> None:
+    """
+    Logs the keys pressed on a mission's reward page.
+
+    Only reports. Tells apart a reward page that was left without accepting, one that never
+    took input, and an accept that didn't complete the mission.
+    """
+    if not log_adjustments.value or int(args.uevent) != IE_PRESSED:
+        return
+    reward = obj.RewardObject
+    mission = None if reward is None else reward.RewardData.Mission
+    name = "no mission" if mission is None else mission.Name
+    logging.info(f"{LOG_PREFIX} reward page key {args.ukey} ({name})")
 
 
 @hook("WillowGame.WillowPlayerController:ServerGrantMissionRewards")
@@ -802,15 +944,21 @@ def on_mission_status_updated(
 
     The game locks a mission's level right before this runs for a newly accepted mission, so
     this is where the player's record of it is first complete; the accept hook above then has
-    nothing left to do.
+    nothing left to do. Also marks a turned-in mission complete, whatever the mission bound is
+    set to.
     """
-    if _mission_floor_offset() is None:
-        return
-    if int(args.NewMissionStatus) not in MISSION_ACCEPTED_STATUSES:
-        return
     mission = args.Mission
-    if mission is not None:
-        _level_mission(mission, obj)
+    if mission is None:
+        return
+    status = int(args.NewMissionStatus)
+    if status == MISSION_COMPLETE:
+        # A co-op host sees other players' completions too; only our own turn-ins are tracked
+        if obj.IsLocalPlayerController():
+            _note_complete(mission)
+        return
+    if _mission_floor_offset() is None or status not in MISSION_ACCEPTED_STATUSES:
+        return
+    _level_mission(mission, obj)
 
 
 @hook("WillowGame.WillowPlayerController:ReceiveWeaponReward")
@@ -846,14 +994,4 @@ def on_receive_reward(
         )
 
 
-mod = build_mod(
-    options=[
-        min_enemy_level,
-        max_enemy_level,
-        min_item_level,
-        max_item_level,
-        min_mission_level,
-        on_level_vendors,
-        log_adjustments,
-    ],
-)
+mod = build_mod(options=OPTIONS)

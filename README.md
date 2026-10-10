@@ -47,10 +47,12 @@ items you feed it.
 
 One on/off switch:
 
-- **On-Level Vendors** - vending machines stock at your level, item of the day included
+- **On-Level Vendors** - vending machines below your level stock at your level, item of the day
+  included. A machine above your level (a DLC area you are early for, say) keeps its own level:
+  pulling it down can leave it with nothing to sell.
 
-And **Log Adjustments** prints each change to the console and to
-`<game>\Binaries\Win32\Plugins\unrealsdk.log`.
+And **Log Adjustments** prints each change, each vending machine you open and each mission you
+turn in to the console and to `<game>\Binaries\Win32\Plugins\unrealsdk.log`.
 
 Everything starts off or on `Vanilla`. Each setting works on its own. In co-op only the
 host's settings matter. Enemies already alive when you level up keep their level until they

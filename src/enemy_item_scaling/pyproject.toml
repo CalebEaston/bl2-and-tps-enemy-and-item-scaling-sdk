@@ -1,6 +1,6 @@
 [project]
 name = "enemy_item_scaling"
-version = "0.8"
+version = "0.9"
 authors = [{ name = "CalebEaston" }]
 description = """\
 For Borderlands 2 and Borderlands: The Pre-Sequel (the Pre-Sequel side should work but is \

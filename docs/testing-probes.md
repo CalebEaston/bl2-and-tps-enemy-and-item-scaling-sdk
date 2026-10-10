@@ -8,7 +8,13 @@ all of it. Log lines look like `[Enemy and Item Scaling] spawn PawnBalance_Marau
 (player 15)` with the kind being `spawn` (the factory hook), `enemy` / `enemy level` (the two
 safety nets; silent when the factory hook already did the work), `loot`, `container` or
 `vendor`, and only appear when a level actually changed. The lines `vendor restock X: a -> b`
-and `mission M: a -> b` have no `(player N)` suffix.
+and `mission M: a -> b` have no `(player N)` suffix. Since v0.9 there are also report-only lines,
+printed whether or not anything changed: `settings` (once per map load), `vendor opened X: level
+L (exp level E), N items, item of the day yes|none (player P)` (no item count for the black
+market or the SHiFT machine), `turn-in M: level L, status S (player P)`, `turn-in M complete`
+and `reward page key K (M)`. A warning `M is being turned in again ... (please report this, with
+any errors above)` is printed even with Log Adjustments off (it only catches a repeat on the same
+map visit; the record is cleared at every load).
 
 First playtest (2026-10-08, v0.2-v0.4, Southern Shelf, player 4 then 6): enemies kept their
 nameplate level while their drops scaled (fixed in v0.5 by hooking the population factory, see
@@ -40,8 +46,9 @@ read it there (`m.has_overpower_levels()` must print `False`).
 py from mods_base import get_pc; pc = get_pc(); print(pc.PlayerReplicationInfo.ExpLevel, pc.OverpowerChoiceValue, pc.GetCurrentPlaythrough())
 ```
 
-Every hook target exists and has the parameter name the code reads (a `ValueError` names a missing
-function; it's fine if exactly one of the two `SetGameStageForSpawnedInventory` paths is missing):
+These hook targets exist and have the parameter names the code reads (a `ValueError` names a
+missing function; it's fine if exactly one of the two `SetGameStageForSpawnedInventory` paths is
+missing). The vendor, mission-list and reward-page targets aren't in the list:
 
 ```
 py import unrealsdk; print([(f, [p.Name for p in unrealsdk.find_object('Function', f)._properties()]) for f in ('WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor', 'WillowGame.PopulationFactoryBalancedAIPawn:RestorePopulatedAIPawn', 'WillowGame.WillowPawn:SetGameStage', 'WillowGame.WillowAIPawn:SetExpLevel', 'WillowGame.WillowPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowAIPawn:SetGameStageForSpawnedInventory', 'WillowGame.WillowInteractiveObject:SetGameStage', 'WillowGame.WillowPlayerController:ReceiveWeaponReward', 'WillowGame.WillowPlayerController:ReceiveItemReward', 'WillowGame.WillowPlayerController:AcceptMission', 'WillowGame.WillowPlayerController:UpdateMissionStatus', 'WillowGame.WillowPlayerController:ClientReceiveMissionStatus', 'WillowGame.WillowPlayerController:OnExpLevelChange', 'WillowGame.WillowPlayerController:WillowClientDisableLoadingMovie', 'WillowGame.WillowPlayerController:ServerGrantMissionRewards')])
@@ -93,7 +100,8 @@ Fresh character around level 5. `Maximum Enemy Level = Player Level`. Go to Thre
 
 ## 4. Vanilla
 
-All five spinners on `Vanilla` and `On-Level Vendors` off: no log lines at all, on any map.
+All five spinners on `Vanilla` and `On-Level Vendors` off: no level-changing lines on any map;
+only the report-only lines listed at the top.
 
 ## 5. Within N
 
@@ -148,6 +156,13 @@ mission it hasn't accepted yet (e.g. level 15 in Southern Shelf).
 - A mission accepted above your level (a DLC mission taken early): never lowered. Expect no
   `mission` line for it until you catch up with it.
 - With Reward Reroller: rerolls come out at your level.
+- Every turn-in: a `turn-in M: level L, status 3` line at the confirm, then `turn-in M complete`
+  from `UpdateMissionStatus` / `ClientReceiveMissionStatus` reporting status 4. No `complete`
+  line on a turn-in that did complete means neither function reports the completion; then the
+  repeat warning would misfire for repeatable missions, so report it.
+- With Reward Reroller: a `reward page key Enter (M)` line when you accept its page, then
+  `turn-in M complete`. If the mission stays in the list, the next confirm of it on the same map
+  prints the `is being turned in again` warning; see testing.md section 9 for the A/B test.
 - Set the bound back to `Vanilla`: missions already raised keep their level (it is in the save); newly
   accepted ones stay vanilla.
 
@@ -165,6 +180,10 @@ mission it hasn't accepted yet (e.g. level 15 in Southern Shelf).
   logs but the 20-minute restock never does, the timer bypasses `ResetInventory`; stack
   `@hook("WillowGame.WillowVendingMachine:ClearInventory")` on the same callback.
 - With the toggle off, vendors must be untouched even when the item bounds are set.
+- Raise only (v0.9): a character below the area's level (Fight for Sanctuary under 30, or level 5
+  in Three Horns Divide) gets no `vendor` line for those machines, and each machine's
+  `vendor opened` line shows the area's level and more than 0 items. v0.8 lowered them, which
+  emptied machines in Fight for Sanctuary.
 
 ## 9. The Pre-Sequel (v0.6)
 

@@ -165,3 +165,8 @@ No code from other mods is included, but this one builds on what they figured ou
 ## Changelog
 
 See [src/enemy_item_scaling/Readme.md](src/enemy_item_scaling/Readme.md).
+
+## License
+
+[GPL-3.0](LICENSE). You can use, change and share this mod; anything you release that includes
+its code has to be GPL-3.0 as well.

@@ -8,6 +8,8 @@ __pycache__/
 # Packaged mod and SDK downloads
 *.sdkmod
 *.zip
+# Copied in from the repo root only when packaging
+src/enemy_item_scaling/LICENSE
 
 # Defensive: the SDK keeps settings in <game>/sdk_mods/settings/, but never commit one if it appears
 settings/

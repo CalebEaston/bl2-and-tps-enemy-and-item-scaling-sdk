@@ -48,6 +48,7 @@ typed into the console.
 ## Building the .sdkmod by hand
 
 ```sh
+cp LICENSE src/enemy_item_scaling/LICENSE   # the GPL copy travels inside the mod; gitignored there
 cd src && zip -r ../enemy_item_scaling.sdkmod enemy_item_scaling -x '*__pycache__*'
 ```
 

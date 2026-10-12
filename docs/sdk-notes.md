@@ -548,8 +548,10 @@ on every PR) require, and therefore what must stay true in `pyproject.toml`:
   page URL fails). GitHub keeps that URL pointing at the newest release, so no PR is needed per
   version; the site re-reads the pyproject on each build.
 - `tool.sdkmod` may only contain name, version, mod_type, supported_games, coop_support,
-  license {name, url}, download, auto_enable, uses_native_modules. No license is declared (the
-  repo has no LICENSE file); add one to both if Caleb picks a licence.
+  license {name, url}, download, auto_enable, uses_native_modules. Licence since 2026-10-12:
+  GPL-3.0, `LICENSE` at the repo root (the official gnu.org text) and
+  `license = {name = "GPL3", url = ...choosealicense.com/licenses/gpl-3.0/}` in `tool.sdkmod`,
+  the same form apple1417's mods use; the release workflow copies `LICENSE` into the `.sdkmod`.
 - `pyproject_url` must be `raw.githubusercontent.com` (CORS), never `github.com/.../raw/`.
 - Categories come from `_data/categories.yml` (enemy, loot, gameplay, gear, utility, ...).
 Both validators passed locally before the PR (`<scratch venv>/bin/python _validate_pyproject.py
@@ -586,8 +588,9 @@ the README's Credits section and the Nexus page text; this is the full list.
 | bl-sdk repos' ruff/pyright config | apple1417 | GPL-3.0 / LGPL-3.0 | the root `pyproject.toml` lint lists are copied verbatim; dev only, never shipped |
 
 Looked at and not used: juso40's ScaledTVHM and BadassBounties, Rossays' Game Scaler, RedxYeti's
-Projectile Randomizer. If code from any GPL source is ever copied in, the mod would have to be
-GPL-3.0; keep borrowing ideas and facts, not code.
+Projectile Randomizer. The mod is GPL-3.0 since 2026-10-12 (Caleb's choice, matching most of
+the sources above), so code from a GPL-3.0 source may now be copied in with credit, and MIT code
+with its notice kept; code from sources with no licence found still may not.
 
 ## v0.9 (2026-10-10): vendors raise only, turn-in diagnostics
 

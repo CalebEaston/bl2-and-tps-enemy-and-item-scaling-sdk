@@ -30,8 +30,11 @@ jobs:
           fi
 
       - name: Build the .sdkmod
-        # A .sdkmod is a zip whose only top-level folder is named like the file.
-        run: cd src && zip -r ../enemy_item_scaling.sdkmod enemy_item_scaling -x '*__pycache__*'
+        # A .sdkmod is a zip whose only top-level folder is named like the file. The GPL asks for
+        # a copy of the licence to travel with the code, so it goes inside that folder.
+        run: |
+          cp LICENSE src/enemy_item_scaling/LICENSE
+          cd src && zip -r ../enemy_item_scaling.sdkmod enemy_item_scaling -x '*__pycache__*'
 
       - name: Publish the release
         env:

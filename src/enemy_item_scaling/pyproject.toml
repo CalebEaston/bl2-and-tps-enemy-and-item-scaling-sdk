@@ -4,8 +4,8 @@ version = "0.9"
 authors = [{ name = "CalebEaston" }]
 description = """\
 For Borderlands 2 and Borderlands: The Pre-Sequel (the Pre-Sequel side should work but is \
-untested so far). Keeps enemy, item and mission levels within a band around your level, so areas \
-you come back to, the loot they drop and the missions you finish there stay relevant.
+untested so far). Scales enemies, loot and missions to your level. I wanted to make the \
+gameplay loop somewhat resemble the more modern Borderlands entries.
 
 Each bound is its own setting: raise under-levelled enemies, loot or missions, cap over-levelled \
 enemies or loot, or leave any of them vanilla.

@@ -11,15 +11,11 @@ into) but hasn't been tested yet.
 drop `enemy_item_scaling.sdkmod` into your `sdk_mods` folder, restart the game. First time using SDK
 mods? See [Installation](#installation).
 
-Outside of UVHM, both games give every area a fixed level range. Once you've out-levelled an
-area, everything in it is stuck behind you: the enemies die in a shot or two and nothing they drop
-is worth picking up. This mod puts a band around your level and keeps enemies, loot and the missions you have accepted inside it.
-Go back to Knuckle Dragger at level 15 and he spawns at level 15, and so does the loot he drops.
+I wanted to make the gameplay loop somewhat resemble the more modern Borderlands entries.
 
-Each side of the band is its own option. You can raise only the enemies that fall behind you,
-raise only the loot or only your missions, cap anything that has run ahead of you, or leave any of them vanilla. The
-enemy and item settings are independent, so you can keep vanilla enemy scaling and still get the
-gear they drop on your level.
+Each part is its own option: raise only the enemies that fall behind you, only the loot or only
+your missions, cap anything that runs ahead of you, or leave any of them vanilla. The enemy and
+item settings are independent, so you can keep vanilla enemies and still get on-level gear.
 
 This is a new mod and I haven't been able to test everything, so if something looks off, leave a
 comment or [open an issue](https://github.com/CalebEaston/bl2-and-tps-enemy-and-item-scaling-sdk/issues).

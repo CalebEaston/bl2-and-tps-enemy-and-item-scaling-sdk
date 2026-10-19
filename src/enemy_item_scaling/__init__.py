@@ -7,6 +7,8 @@ from unrealsdk import logging
 from unrealsdk.hooks import Block, Type, prevent_hooking_direct_calls
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from unrealsdk.unreal import BoundFunction, UClass, UObject, WrappedStruct
 
 # Injected by build_mod() from pyproject.toml
@@ -351,6 +353,44 @@ def _factory_name(factory: UObject) -> str:
     return factory.Name if balance is None else balance.Name
 
 
+def _vehicle_factory_name(factory: UObject) -> str:
+    archetype = factory.VehicleArchetype
+    return factory.Name if archetype is None else archetype.Name
+
+
+def _spawn_in_band(
+    obj: UObject,
+    args: WrappedStruct,
+    func: BoundFunction,
+    name_of: Callable[[UObject], str],
+) -> tuple[type[Block], UObject | None] | None:
+    """
+    Re-runs a population factory call with its GameStage argument clamped to the enemy band.
+
+    Args:
+        obj: The population factory.
+        args: The factory call's arguments; GameStage is the level it was asked for.
+        func: The factory call, bound to `obj`.
+        name_of: Names the factory for the log line.
+    Returns:
+        (Block, the spawned actor) when the level was clamped, None to let the original run.
+    """
+    requested = int(args.GameStage)
+    target = _band_target(requested, min_enemy_level, max_enemy_level)
+    if target is None:
+        return None
+    wanted, player_level = target
+
+    if log_adjustments.value:
+        logging.info(
+            f"{LOG_PREFIX} spawn {name_of(obj)}: {requested} -> {wanted} (player {player_level})",
+        )
+    args.GameStage = wanted
+    with prevent_hooking_direct_calls():
+        spawned = func(args)
+    return Block, spawned
+
+
 @hook("WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor")
 @hook("WillowGame.PopulationFactoryBalancedAIPawn:RestorePopulatedAIPawn")
 def on_spawn_ai_pawn(
@@ -368,21 +408,34 @@ def on_spawn_ai_pawn(
     only the game stage afterwards (the v0.1-v0.4 approach) left the enemy at its old level
     with on-level drops.
     """
-    requested = int(args.GameStage)
-    target = _band_target(requested, min_enemy_level, max_enemy_level)
-    if target is None:
-        return None
-    wanted, player_level = target
+    return _spawn_in_band(obj, args, func, _factory_name)
 
-    if log_adjustments.value:
-        logging.info(
-            f"{LOG_PREFIX} spawn {_factory_name(obj)}: {requested} -> {wanted}"
-            f" (player {player_level})",
-        )
-    args.GameStage = wanted
-    with prevent_hooking_direct_calls():
-        spawned = func(args)
-    return Block, spawned
+
+# PopulationFactoryWillowVehicle.BalanceVehicleFor (EVehicleBalanceOption): 0 balances the
+# vehicle for the players who will drive it, 1 for the enemy AI that crews it.
+VEHICLE_BALANCE_FOR_ENEMY_AI = 1
+
+
+@hook("WillowGame.PopulationFactoryWillowVehicle:CreatePopulationActor")
+def on_spawn_vehicle(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    func: BoundFunction,
+) -> tuple[type[Block], UObject | None] | None:
+    """
+    Scales an enemy vehicle's level before its population factory builds it.
+
+    Bandit technicals, sandskiffs, turrets, fan boats and The Pre-Sequel's scav buggies are
+    vehicles, not pawns (buzzards are pawns): they have a factory and level setters of their
+    own, so the enemy hooks above never see them. This factory passes its GameStage argument
+    on the same way the pawn one does, so the same clamp moves the vehicle's level, health and
+    drops together. Catch-A-Ride vehicles come from factories balanced for players, which the
+    game levels to the players itself.
+    """
+    if int(obj.BalanceVehicleFor) != VEHICLE_BALANCE_FOR_ENEMY_AI:
+        return None
+    return _spawn_in_band(obj, args, func, _vehicle_factory_name)
 
 
 @hook("WillowGame.WillowPawn:SetGameStage")
@@ -429,6 +482,58 @@ def on_ai_pawn_exp_level(
     requested = int(args.NewExpLevel)
     return _apply_band(
         "enemy level",
+        obj,
+        func,
+        requested,
+        floor=min_enemy_level,
+        ceiling=max_enemy_level,
+    )
+
+
+def _is_player_vehicle(obj: UObject) -> bool:
+    """Whether a vehicle came from a Catch-A-Ride station: the game levels those to the players."""
+    return bool(obj.WasSpawnedFromASpawnStation())
+
+
+@hook("WillowGame.WillowVehicle:SetGameStage")
+def on_vehicle_game_stage(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    func: BoundFunction,
+) -> type[Block] | None:
+    """
+    Scales an enemy vehicle's game stage as it is set.
+
+    Vehicles have their own level setters, which the pawn safety nets never see. Same role as
+    those: for a vehicle that skipped its factory; a no-op after the factory hook.
+    """
+    if _is_player_vehicle(obj):
+        return None
+    requested = int(args.NewGameStage)
+    return _apply_band(
+        "vehicle",
+        obj,
+        func,
+        requested,
+        floor=min_enemy_level,
+        ceiling=max_enemy_level,
+    )
+
+
+@hook("WillowGame.WillowVehicle:SetExpLevel")
+def on_vehicle_exp_level(
+    obj: UObject,
+    args: WrappedStruct,
+    _ret: Any,
+    func: BoundFunction,
+) -> type[Block] | None:
+    """Scales an enemy vehicle's displayed level as it is set; the same safety net."""
+    if _is_player_vehicle(obj):
+        return None
+    requested = int(args.NewExpLevel)
+    return _apply_band(
+        "vehicle level",
         obj,
         func,
         requested,

@@ -38,8 +38,9 @@ to `Within 10 Levels` (that many levels below you for a minimum, above you for a
   lowered. Works with Reward Reroller: rerolls come out at that level too.
 
 An enemy that gets raised or lowered drops loot at its new level, and the item settings apply on
-top of that. In The Pre-Sequel the Grinder is left alone: its output takes its level from the
-items you feed it.
+top of that. Enemy vehicles (bandit technicals, sandskiffs, turrets, fan boats, scav buggies)
+follow the enemy settings too; their drops come at the vehicle's level, out of the item settings' reach. In The
+Pre-Sequel the Grinder is left alone: its output takes its level from the items you feed it.
 
 One on/off switch:
 

@@ -1,5 +1,14 @@
 ## Changelog
 
+### Enemy and Item Scaling v0.10
+- Enemy vehicles now follow the enemy bounds: bandit technicals, sandskiffs, turrets, fan boats
+  and the Pre-Sequel's scav buggies. To the game they are vehicles rather than enemies (buzzards
+  are enemies), built by a spawn path of their own that the mod wasn't watching, so they kept
+  their vanilla level while their crew scaled (reported on Nexus: level-50 technicals and
+  sandskiffs next to a level-24 player with the enemy cap on). Vehicles you take from a Catch-A-Ride are left to the game,
+  which levels them to you. A vehicle's drops come at the vehicle's level: the item bounds don't
+  reach them.
+
 ### Enemy and Item Scaling v0.9
 - `On-Level Vendors` now only raises vending machines. A machine below your level still stocks
   at your level; one above your level (a DLC area you are early for, say) keeps its own level,

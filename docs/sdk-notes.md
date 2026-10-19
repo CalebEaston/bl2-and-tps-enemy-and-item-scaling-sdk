@@ -94,8 +94,9 @@ Enemy level ("game stage"):
 - Region stage (what BLCMM "area scaling" mods edit): `GD_GameStages.Balance.*.BalanceByRegion[]
   .Min/MaxDefaultGameStage`; `pc.GetGameStageFromRegion(region)`; cached per region+playthrough on
   the controller (`pc.RegionGameStages`). Not used by this mod.
-- Vehicles: `WillowVehicle:SetGameStage` / `:SetExpLevel` exist (EnemyBalancer hooks them);
-  unknown whether our `WillowPawn:SetGameStage` hook also sees them.
+- Vehicles: `WillowVehicle` is an `SVehicle`, not a `WillowPawn`, and redeclares `SetGameStage` /
+  `SetExpLevel`, so the pawn hooks never see one; they spawn from `PopulationFactoryWillowVehicle`.
+  Hooked since v0.10 (its section below).
 
 Item level:
 
@@ -300,8 +301,9 @@ at 4):
   through neither event; they are no-ops when the factory hook already clamped the argument.
 - Consequence: a clamped enemy passes its clamped stage into `SetGameStageForSpawnedInventory`, so
   its drops follow the enemy level and the item band applies on top. Documented in the README.
-- Not covered: enemy vehicles (`PopulationFactoryWillowVehicle:CreatePopulationActor`,
-  `WillowVehicle:SetGameStage/SetExpLevel`), `WillowAIPawn:AILevelUp` transformations.
+- Not covered here: enemy vehicles (`PopulationFactoryWillowVehicle:CreatePopulationActor`,
+  `WillowVehicle:SetGameStage/SetExpLevel`; hooked in v0.10 after the Nexus report),
+  `WillowAIPawn:AILevelUp` transformations.
 
 Mission rewards (reported: "This Town Ain't Big Enough" reward at 3 with player 6; whether the
 toggle was on is unconfirmed). Superseded in v0.7, which raises the mission permanently and
@@ -679,3 +681,64 @@ skeptic each, a planner) produced the analysis below; nothing of it has been run
   and the A/B test in `docs/testing.md` section 9 (our mod off with the reroller on, then the
   reverse, on the same stuck mission). Workaround meanwhile: turn the reroller off for skin/head
   missions, or accept its page with Enter.
+
+## v0.10 (2026-10-19): enemy vehicles
+
+Nexus bug report (2026-10-19, v0.9, relayed by Caleb; the page is behind Cloudflare and
+unreadable from the dev machine): "Vehicles that both enemies and players can use do not scale
+with the player's level. This applies to both the Bandit Technical and the Sandskiff, but not to
+the Buzzard. I'm level 24, but the Bandit Technical and the Sandskiff are still level 50. The
+mod should make them match my level, but they're not scaling down." So the enemy cap was on,
+the pawns around came down to the band and the vehicles did not (buzzards are
+`PawnBalance_Gyrocopter` WillowAIPawns through the pawn factory, which is why they scaled). Cause, from the BL2 SDK class
+dump (`WillowGame_classes.h` / `_functions.cpp`) and ft-explorer's object dumps; nothing run in
+game:
+
+- `WillowVehicle` extends `WillowVehicleBase` -> `SVehicle` -> `Vehicle` -> `Pawn`, not
+  `WillowPawn`, and redeclares `SetGameStage(NewGameStage)` / `SetExpLevel(NewExpLevel)` (both
+  `FUNC_Final | FUNC_Native`; `WillowPawn:SetGameStage` is `FUNC_Native` too and apple1417's mod
+  hooks it, so native is no barrier). The pawn nets never see a vehicle.
+- Enemy vehicles spawn through `PopulationFactoryWillowVehicle:CreatePopulationActor`
+  (`FUNC_Event`; same params as the pawn factory's, TPS adds `SpawnOwner`), a class of its own
+  next to `PopulationFactoryBalancedAIPawn`. No `RestorePopulatedAIPawn` equivalent exists.
+  EnemyBalancer, which hooks it, read the .uc: the GameStage argument picks the archetype/grade
+  and is then passed to `SetGameStage` / `SetExpLevel`, the pawn factory's shape, so the same
+  argument clamp + re-call + `(Block, spawned)` applies (`_spawn_in_band`, shared with pawns).
+- `BalanceVehicleFor` (`EVehicleBalanceOption`) per factory (ft-explorer
+  `PopulationFactoryWillowVehicle.dump`, BL2): `VEHICLEBALANCE_ForEnemyAI` (1) for
+  `PopDef_BanditTechnical_Mix` (4 factories: SawBlade / Rocket / MG / BadassMG `_AIOnly`
+  archetypes) and the Anemone copies, `PopDef_BanditTurret`, `PopDef_CannonTurret`, the Iris
+  rocket turrets and monster truck, the Sage manned fan boats, the Orchid raider skiff and union
+  vehicle, and the CaraVan / CaraVan_Escort / Moonshiner / FirstPlaceTechnical mission vehicles;
+  `VEHICLEBALANCE_ForPlayers` (0) for every `VSS_*` Catch-A-Ride factory (runners, technicals,
+  hovercraft, fan boats) and for `GD_Orchid_PopulationVehicles.Flatbed.PopDef_Caravan_Flatbed`.
+  TPS: the scav moon buggies (`PopDef_MoonBuggy_*_Scav`), `CO_CannonTurret` and `PopDef_TurboLaser`
+  are ForEnemyAI; `VSS_StingRay_*` and `VSS_*Buggy` ForPlayers. The hook keys on
+  `int(obj.BalanceVehicleFor) == 1`; Catch-A-Ride vehicles are the game's, levelled to the
+  players by `WillowVehicle:BalanceVehicleForPlayerUse` (`LastKnownMaxPlayerExpLevel`,
+  `TimeBetweenBalanceChecks`).
+- Every factory but the two Orchid skiff ones has `VehicleBalanceDefinition=None` (archetype
+  only), all 11 TPS factories included (ft-explorer has no TPS VehicleBalanceDefinition dump at
+  all), so no grade range can miss; the skiffs' single grade covers stages 1-100. A clamped
+  stage with no grade would make a factory return None (EnemyBalancer's fallback case); none
+  here can.
+- Crew: `DefaultCrew[].PopulationDefForRole` (`PopDef_MarauderGrunt_VehicleCrew`, the Hodunk
+  grunts) are ordinary population definitions, so the crew came through
+  `PopulationFactoryBalancedAIPawn` and was clamped since v0.5 while the technical was not.
+- Drops: `WillowVehicle:DropItemPoolItems()` takes no stage and vehicles have no
+  `SetGameStageForSpawnedInventory`, so drops follow the vehicle's level; the item band cannot
+  reach them separately (README and changelog say so).
+- Safety nets `WillowVehicle:SetGameStage` / `:SetExpLevel` skip `WasSpawnedFromASpawnStation()`
+  (native final with no body in any source here; what it reads is a guess: `VSSVehicleDef`,
+  the transient `VSSUIDef`, or the population master's station pool). Unverified: whether it is already true
+  while a station vehicle's own spawn (`WillowPopulationMaster.SpawnVehicleFromVehicleSpawnStation`
+  -> the VSS factory -> nested setter calls, which do fire hooks) runs. If not, the net clamps
+  the spawn stage, which the game then rebalances for players; in single player the station's
+  stage is the player's level anyway, inside every band. Residual, documented in CLAUDE.md: in
+  co-op a player-balanced vehicle not from a station (the Orchid flatbed), or a station vehicle
+  before its field is set, could be clamped to the host's band.
+- Log lines: `spawn <archetype>` from the factory hook (`Vehicle_MGTechnical_AIOnly`,
+  `Pawn_BanditTurret`), `vehicle <actor>` / `vehicle level <actor>` from the nets, where the
+  actor is the spawned vehicle's own name (`WillowVehicle_WheeledVehicle_N`), not the archetype.
+- Test plan: `docs/testing.md` section 1 (technicals, turrets) and 8 (scav buggies); probes in
+  `docs/testing-probes.md` section 1 and 9.

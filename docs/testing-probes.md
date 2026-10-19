@@ -80,6 +80,16 @@ Go to Southern Shelf (vanilla level 1-5).
 - If an enemy still shows a vanilla level with no `spawn` line, it came through neither factory
   function; look for an `enemy` / `enemy level` line for it, and if there is none either, find
   its spawn path (`SpawnAIPawn`, `Behavior_SpawnFromPopulationSystem`).
+- Vehicles (v0.10): a bandit technical spawn logs `spawn Vehicle_<kind>Technical_AIOnly: a -> b`
+  and its crew their own `spawn PawnBalance_...` lines at the same stage; turrets log
+  `spawn Pawn_BanditTurret` / `spawn Pawn_CannonTurret`. No `vehicle` / `vehicle level` lines
+  are expected for them (the factory passed the clamped stage in) nor for your Catch-A-Ride
+  vehicle (skipped by `WasSpawnedFromASpawnStation()`). Probe, with vehicles around:
+  `py import unrealsdk; print([(v.Name, v.GetGameStage(), v.GetExpLevel(), v.WasSpawnedFromASpawnStation()) for v in unrealsdk.find_all("WillowVehicle", False)])`
+  expects enemy vehicles inside the band and the station vehicle at the players' level. A
+  `vehicle WillowVehicle_WheeledVehicle_N` line with no matching `spawn` line, right as a
+  Catch-A-Ride vehicle appears, means `WasSpawnedFromASpawnStation()` is still false during the
+  spawn (the nets log the actor's name, not the archetype); harmless in single player, note it.
 
 ## 2. Item floor
 
@@ -114,8 +124,10 @@ Search `<game>/Binaries/Win32/Plugins/unrealsdk.log` for `Traceback`, `NoneType`
 
 ## Things only the game can tell us
 
-- Whether `WillowGame.WillowVehicle:SetGameStage` is a separate function (enemy-driven vehicles
-  would then keep their vanilla level until a hook is added for it).
+- Answered by the Nexus report (v0.10): `WillowGame.WillowVehicle:SetGameStage` is separate, and
+  enemy vehicles kept their vanilla level until v0.10 hooked their factory. Still open: whether
+  `WasSpawnedFromASpawnStation()` is already true when a Catch-A-Ride vehicle's own spawn calls
+  the setters (section 1's probe).
 - Whether vending machines go through `WillowInteractiveObject:SetGameStage` when they spawn
   (if not, `On-Level Vendors` only takes effect at the first restock; the item band never
   touches them).
@@ -203,6 +215,10 @@ only checked against the game's class stubs.
 - Claptastic Voyage with the enemy floor on: EnemyBalancer saw `.exe` badasses there come
   through neither factory function, so expect `enemy <name>: a -> b` and `enemy level <name>`
   lines instead of `spawn` lines for them, with nameplates and health to match.
+- Scav moon buggies (Triton Flats, Serenity's Waste) with the enemy floor on: a
+  `spawn Vehicle_MoonBuggy_..._AIOnly: a -> b` line each and nameplates to match. Their factories
+  are archetype-only (no `VehicleBalanceDefinition`), like the BL2 technicals, so no grade range
+  can miss.
 - A fresh character with `Maximum Item Level = Player Level`: every chest in the intro
   (`MoonShotIntro_P`) must still spawn loot. The mod refuses to lower containers there (and in
   Mercenary Day's `Xmas_P`), mirroring Bouncy Loot God, which found an empty chest otherwise. A

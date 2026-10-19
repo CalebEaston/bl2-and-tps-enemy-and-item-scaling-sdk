@@ -17,6 +17,8 @@ Five spinner options, each `Vanilla` | `Player Level` | `Within 1 Level` ... `Wi
 | Maximum Item Level | no cap | item level lowered to at most `player + N` |
 | Minimum Mission Level | no floor | an accepted mission's level raised to at least `player - N`, never lowered, written into the save (v0.8; was the `On-Level Mission Rewards` bool in v0.2-v0.7) |
 
+Enemy vehicles (technicals, sandskiffs, turrets, fan boats, TPS scav buggies; buzzards are pawns)
+count as enemies since v0.10 (Nexus report); their drops follow the vehicle's level, out of the item band's reach.
 `player` = `PlayerReplicationInfo.ExpLevel`, plus `OverpowerChoiceValue` in BL2 UVHM only (TPS has
 no OP levels and no such field; `has_overpower_levels()` looks the field up on the class once and
 guards the read). Item bounds
@@ -150,6 +152,8 @@ In-game (the game is NOT installed on this dev machine; it runs elsewhere via St
 |---|---|---|
 | `WillowGame.PopulationFactoryBalancedAIPawn:CreatePopulationActor` and `:RestorePopulatedAIPawn` (PRE) | `GameStage`; re-call `func(args)`, return `(Block, spawned)` (no fallback: `prevent_hooking_direct_calls` doesn't cover the factory's nested setter calls, so a retry at the original stage would be re-clamped by the safety nets anyway) | primary enemy path: the factory passes this one argument to `SetGameStage`, `SetExpLevel` (nameplate; the input of the health/damage formulas) and `SetGameStageForSpawnedInventory`, so clamping it moves all three |
 | `WillowGame.WillowPawn:SetGameStage` and `WillowGame.WillowAIPawn:SetExpLevel` | `NewGameStage` / `NewExpLevel` | safety nets for pawns that skip the factory; no-ops after the factory hook. A `SetGameStage`-only hook (v0.1-v0.4) left enemies at their vanilla nameplate/health with on-level drops |
+| `WillowGame.PopulationFactoryWillowVehicle:CreatePopulationActor` (PRE; only when `int(obj.BalanceVehicleFor)` is `VEHICLEBALANCE_ForEnemyAI` = 1. Catch-A-Ride stations spawn through the same class with `ForPlayers` = 0 and the game levels those itself) | `GameStage`; same re-call, `(Block, spawned)` | enemy vehicles (v0.10, Nexus report): bandit technicals, Orchid sandskiffs (`Pawn_Hovercraft_AIOnly`), turrets, fan boats, the Iris monster truck, mission caravans, TPS scav buggies; buzzards are `Pawn_Gyrocopter` WillowAIPawns through the pawn factory. `WillowVehicle` is an `SVehicle`, not a `WillowPawn`, so nothing above sees it; the factory passes the argument to `SetGameStage` / `SetExpLevel` like the pawn one (EnemyBalancer's reading of the .uc). No restore function exists for vehicles. Crew come through the pawn factory and were already clamped. `DropItemPoolItems()` takes no stage, so drops follow the vehicle's level: the item band can't reach them |
+| `WillowGame.WillowVehicle:SetGameStage` and `:SetExpLevel` (both `FUNC_Final \| FUNC_Native`, the flags of `WillowInteractiveObject:SetGameStage`, which this mod hooks and which demonstrably fired in game, the v0.8 vendor lowering; `WillowPawn:SetGameStage` is `FUNC_Native` only) | `NewGameStage` / `NewExpLevel`; skipped when `WasSpawnedFromASpawnStation()` | safety nets for vehicles that skip the factory; no-ops after it. Residual (documented, co-op only): a player-balanced vehicle not from a station (`PopDef_Caravan_Flatbed`), or a station vehicle whose `VSSVehicleDef` isn't set yet while its own spawn calls the setters, could be clamped to the host's band; in single player a station vehicle's stage is the player's level, inside every band |
 | `WillowGame.WillowPawn:SetGameStageForSpawnedInventory` and `WillowAIPawn:` same | `NewInventoryGameStage` | level of an enemy's drops (a clamped enemy's drops follow its clamped level; the item band applies on top) |
 | `WillowGame.WillowInteractiveObject:SetGameStage` | `NewGameStage` | chests, slot machines, dice/golden chests (item band; never lowered when the object path starts with `Xmas_P.` or `MoonShotIntro_P.`, where Bouncy Loot God found a chest that spawns nothing when down-levelled); vending machines (vendor toggle, raise only since v0.9) |
 | `WillowGame.WillowVendingMachine:ResetInventory` and `WillowGame.WillowVendingMachineShift:ResetInventory` (TPS only; never fires in BL2) | none; calls `SetGameStage` + `SetExpLevel` on `obj` first, only when its `GameStage` is below the player | vendor restocks and paid resets |
@@ -228,10 +232,11 @@ or container they come from, so the hooks above cover them. See `docs/sdk-notes.
   so `"AoDK"` in `supported_games` is probably the whole change (the Overpower read is decided by
   field presence, so it needs no change), but the stub zip has no AoDK tree and nothing was
   checked; not declared because nobody has asked.
-- TPS enemy vehicles, the SHiFT machine's gamble stock (whether the shipped game exposes it and
+- The SHiFT machine's gamble stock (whether the shipped game exposes it and
   whether it follows the stage are unknown), Wilhelm's `OzSupportDrone` / `OzPlayerJumpPad` (plain
   interactive objects the item band would log as `container` if the game ever sets their stage),
   and TPS's `MissionDefinition.LevelAdjustment` / `GetMissionLevel(pc, bIncludeLevelAdjustment)`
-  (BL2 has neither; the mod writes `GameStage` only): same "wait for a report" status as BL2
-  vehicles, with the checks listed in `docs/testing-probes.md` section 9 (plain version: `docs/testing.md`
-  section 8).
+  (BL2 has neither; the mod writes `GameStage` only): "wait for a report" status, with the checks
+  listed in `docs/testing-probes.md` section 9 (plain version: `docs/testing.md` section 8). TPS
+  scav buggies go through the v0.10 vehicle hook (archetype-only factories, no
+  `VehicleBalanceDefinition`, so no grade range can miss); unplayed.

@@ -38,6 +38,14 @@ Settings: `Minimum Enemy Level = Player Level`, the other four bounds `Vanilla`,
 
 - Nameplates show your level and enemies take real effort to kill.
 - The log has one `spawn ...: 3 -> 15` line per enemy.
+- Bandit technicals (Three Horns, The Dust), the sandskiffs in Pirate's Booty and the turrets at
+  bandit camps show your level too, with a `spawn Vehicle_..._AIOnly: 5 -> 15`,
+  `spawn Pawn_Hovercraft_AIOnly: ...` or `spawn Pawn_BanditTurret: ...` line each. With
+  `Maximum Enemy Level` set, a level-50 technical next to a level-24 you comes down the same way. If one
+  keeps its old level, send every `spawn`, `vehicle` and `vehicle level` line from that visit.
+- Your own Catch-A-Ride vehicle is the game's business: there should be no `vehicle` line for
+  it. If you see one right as your runner appears (`vehicle WillowVehicle_WheeledVehicle_7: ...`,
+  say), send it; it is harmless but worth knowing.
 - If an enemy still shows its old level: note what it was (bandit, bullymong, its nameplate)
   and the level it showed, and send every `spawn`, `enemy` and `enemy level` line from that
   visit. The names in the log are internal; I will match them up.
@@ -145,6 +153,9 @@ yet.
   picked up in Concordia.
 - Claptastic Voyage with `Minimum Enemy Level = Player Level`: the `.exe` enemies may log as
   `enemy` / `enemy level` instead of `spawn`. Fine, as long as the nameplates show your level.
+- Scav moon buggies (Triton Flats, Serenity's Waste) show your level, with a
+  `spawn Vehicle_MoonBuggy_..._AIOnly` line each. If one keeps its old level, send the `spawn`,
+  `vehicle` and `vehicle level` lines from that visit.
 - A new character with `Maximum Item Level = Player Level`: every chest in the intro still
   spawns loot. If one is empty, say which, and send any `container` lines from the intro.
 - Concordia with `On-Level Vendors` on: the SHiFT machine may get a
